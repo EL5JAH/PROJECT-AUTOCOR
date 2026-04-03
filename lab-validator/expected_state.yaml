@@ -1,0 +1,252 @@
+lab_name: AUTOCOR-LAB-EXPANDED
+credentials:
+  username: cisco
+  password: cisco
+  secret: cisco
+devices:
+  cat8k-1:
+    host: 172.16.0.1
+    device_type: cisco_ios
+    role: router
+    expected_up_interfaces:
+    - GigabitEthernet1
+    - GigabitEthernet2
+    - Loopback0
+    expected_full_ospf_neighbors: 1
+    expected_routes:
+    - 10.10.10.0/24
+    - 10.20.20.0/24
+    - 10.30.30.0/24
+    - 10.99.99.0/24
+    - 192.168.50.0/24
+    - 3.3.3.3/32
+  cat8k-2:
+    host: 10.99.99.1
+    device_type: cisco_ios
+    role: router
+    expected_up_interfaces:
+    - GigabitEthernet1
+    - GigabitEthernet2
+    - GigabitEthernet3
+    - GigabitEthernet3.10
+    - GigabitEthernet3.20
+    - GigabitEthernet3.30
+    - GigabitEthernet3.99
+    - Loopback0
+    expected_full_ospf_neighbors: 2
+    expected_routes:
+    - 172.16.0.0/30
+    - 172.16.0.4/30
+    - 10.10.10.0/24
+    - 10.20.20.0/24
+    - 10.30.30.0/24
+    - 10.99.99.0/24
+    - 1.1.1.1/32
+    - 3.3.3.3/32
+    - 192.168.50.0/24
+    required_acls:
+    - name: VLAN20_TO_SERVER
+      lines:
+      - permit tcp 10.20.20.0 0.0.0.255 10.30.30.0 0.0.0.255 eq 22
+      - permit icmp 10.20.20.0 0.0.0.255 10.30.30.0 0.0.0.255
+      - deny ip 10.20.20.0 0.0.0.255 10.30.30.0 0.0.0.255
+      - permit ip any any
+  cat8k-3:
+    host: 192.168.50.1
+    device_type: cisco_ios
+    role: router
+    expected_up_interfaces:
+    - GigabitEthernet1
+    - GigabitEthernet2
+    - Loopback0
+    expected_full_ospf_neighbors: 1
+    expected_routes:
+    - 10.10.10.0/24
+    - 10.20.20.0/24
+    - 10.30.30.0/24
+    - 10.99.99.0/24
+    - 1.1.1.1/32
+    - 2.2.2.2/32
+  dist-sw1:
+    host: 10.99.99.11
+    device_type: cisco_ios
+    role: switch
+    expected_up_interfaces:
+    - GigabitEthernet0/0
+    - GigabitEthernet0/1
+    - GigabitEthernet0/2
+    - GigabitEthernet0/3
+    - Vlan99
+    required_vlans:
+    - 10
+    - 20
+    - 30
+    - 99
+    required_svis:
+    - name: Vlan99
+      ip: 10.99.99.11
+    trunk_ports:
+    - name: GigabitEthernet0/0
+      allowed_vlans:
+      - 10
+      - 20
+      - 30
+      - 99
+    - name: GigabitEthernet0/2
+      allowed_vlans:
+      - 10
+      - 20
+      - 30
+      - 99
+    access_ports:
+    - name: GigabitEthernet0/1
+      access_vlan: 10
+    - name: GigabitEthernet0/3
+      access_vlan: 99
+  dist-sw2:
+    host: 10.99.99.12
+    device_type: cisco_ios
+    role: switch
+    expected_up_interfaces:
+    - GigabitEthernet0/0
+    - GigabitEthernet0/1
+    - GigabitEthernet0/2
+    - Vlan99
+    required_vlans:
+    - 10
+    - 20
+    - 30
+    - 99
+    required_svis:
+    - name: Vlan99
+      ip: 10.99.99.12
+    trunk_ports:
+    - name: GigabitEthernet0/0
+      allowed_vlans:
+      - 10
+      - 20
+      - 30
+      - 99
+    access_ports:
+    - name: GigabitEthernet0/1
+      access_vlan: 20
+    - name: GigabitEthernet0/2
+      access_vlan: 30
+local_ping_targets:
+- name: cat8k-2 vlan99 gateway
+  ip: 10.99.99.1
+- name: dist-sw1 vlan99 svi
+  ip: 10.99.99.11
+- name: dist-sw2 vlan99 svi
+  ip: 10.99.99.12
+- name: client-a
+  ip: 10.10.10.10
+- name: client-b
+  ip: 10.20.20.10
+- name: server-a
+  ip: 10.30.30.10
+- name: cat8k-1 transit ip
+  ip: 172.16.0.1
+- name: cat8k-3 mgmt-lan ip
+  ip: 192.168.50.1
+device_ping_tests:
+- name: cat8k-2 to client-a
+  device: cat8k-2
+  target_ip: 10.10.10.10
+  source_ip: 10.10.10.1
+  repeat: 3
+  min_success: 100
+- name: cat8k-2 to client-b
+  device: cat8k-2
+  target_ip: 10.20.20.10
+  source_ip: 10.20.20.1
+  repeat: 3
+  min_success: 100
+- name: cat8k-2 to server-a
+  device: cat8k-2
+  target_ip: 10.30.30.10
+  source_ip: 10.30.30.1
+  repeat: 3
+  min_success: 100
+- name: cat8k-2 to automation-host
+  device: cat8k-2
+  target_ip: 10.99.99.10
+  source_ip: 10.99.99.1
+  repeat: 3
+  min_success: 100
+- name: cat8k-1 to client-a
+  device: cat8k-1
+  target_ip: 10.10.10.10
+  repeat: 3
+  min_success: 100
+- name: cat8k-1 to server-a
+  device: cat8k-1
+  target_ip: 10.30.30.10
+  repeat: 3
+  min_success: 100
+- name: cat8k-3 to automation-host
+  device: cat8k-3
+  target_ip: 10.99.99.10
+  repeat: 3
+  min_success: 100
+- name: cat8k-3 to client-b
+  device: cat8k-3
+  target_ip: 10.20.20.10
+  repeat: 3
+  min_success: 100
+vlan99_policy:
+  must_exist_on:
+    cat8k_2_subinterface:
+      device: cat8k-2
+      interface: GigabitEthernet3.99
+      ip: 10.99.99.1
+    dist_sw1_trunk_to_cat8k2:
+      device: dist-sw1
+      interface: GigabitEthernet0/0
+      mode: trunk
+      allowed_vlan_must_include: 99
+    dist_sw1_trunk_to_distsw2:
+      device: dist-sw1
+      interface: GigabitEthernet0/2
+      mode: trunk
+      allowed_vlan_must_include: 99
+    dist_sw2_trunk_to_distsw1:
+      device: dist-sw2
+      interface: GigabitEthernet0/0
+      mode: trunk
+      allowed_vlan_must_include: 99
+    dist_sw1_access_to_automation_host:
+      device: dist-sw1
+      interface: GigabitEthernet0/3
+      mode: access
+      access_vlan: 99
+    dist_sw1_vlan99_svi:
+      device: dist-sw1
+      interface: Vlan99
+      ip: 10.99.99.11
+    dist_sw2_vlan99_svi:
+      device: dist-sw2
+      interface: Vlan99
+      ip: 10.99.99.12
+  must_not_be_used_on:
+    dist_sw1_client_a:
+      device: dist-sw1
+      interface: GigabitEthernet0/1
+      mode: access
+      access_vlan_must_not_be: 99
+    dist_sw2_client_b:
+      device: dist-sw2
+      interface: GigabitEthernet0/1
+      mode: access
+      access_vlan_must_not_be: 99
+    dist_sw2_server_a:
+      device: dist-sw2
+      interface: GigabitEthernet0/2
+      mode: access
+      access_vlan_must_not_be: 99
+logging:
+  directory: logs
+  filename_prefix: baseline_validate
+  level: INFO
+  console: true
+  file: true
