@@ -19,7 +19,7 @@ id_ed25519*
 # Python
 # =========================
 venv/
-.venv/
+.AUTOCOR/
 env/
 __pycache__/
 *.py[cod]
