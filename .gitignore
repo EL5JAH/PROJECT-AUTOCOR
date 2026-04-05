@@ -1,0 +1,86 @@
+# =========================
+# Secrets
+# =========================
+.env
+.env.*
+*.env
+secrets.yml
+vault.yml
+*.key
+*.pem
+*.crt
+*.p12
+id_rsa*
+id_ed25519*
+*.secret
+*.secrets.*
+
+# =========================
+# Python
+# =========================
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Test / Runtime artifacts
+# =========================
+*.log
+logs/
+reports/
+output/
+artifacts/
+htmlcov/
+.coverage
+coverage.xml
+*.retry
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Build / Packaging
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# Docker / Local overrides
+# =========================
+docker-data/
+docker-compose.override.yml
+
+# =========================
+# Lab / Generated files
+# =========================
+*.virl
+*.qcow2
+*.iso
+topology/*.generated.yaml
+topology/*rendered*.yaml
+
+# =========================
+# Inventory
+# Keep examples tracked, ignore real inventories
+# =========================
+inventory/*.yml
+inventory/*.yaml
+!inventory/example*.yml
+!inventory/example*.yaml
+!inventory/group_vars/
+!inventory/host_vars/
+inventory/group_vars/*vault*
+inventory/host_vars/*vault*

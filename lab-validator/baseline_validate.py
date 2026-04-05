@@ -148,6 +148,56 @@ def parse_ip_int_brief(output: str) -> Dict[str, Tuple[str, str]]:
     return data
 
 
+
+
+def parse_show_interfaces_trunk(output: str) -> Dict[str, Dict[str, Set[int]]]:
+    trunks: Dict[str, Dict[str, Set[int]]] = {}
+    current_section: Optional[str] = None
+    headers = {
+        "Port        Mode": "vlans_allowed",
+        "Port        Vlans allowed on trunk": "vlans_allowed",
+        "Port        Vlans allowed and active in management domain": "vlans_active",
+        "Port        Vlans in spanning tree forwarding state and not pruned": "vlans_forwarding",
+    }
+
+    for raw in output.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        matched_header = False
+        for header, section in headers.items():
+            if stripped.startswith(header.strip()):
+                current_section = section
+                matched_header = True
+                break
+        if matched_header or stripped.startswith("----"):
+            continue
+
+        parts = re.split(r"\s+", stripped)
+        if current_section == "vlans_allowed":
+            if len(parts) >= 2:
+                port = parts[0]
+                vlan_text = parts[-1]
+                entry = trunks.setdefault(port, {"vlans_allowed": set(), "vlans_active": set(), "vlans_forwarding": set()})
+                entry["vlans_allowed"] = expand_vlan_text(vlan_text)
+        elif current_section in {"vlans_active", "vlans_forwarding"}:
+            if len(parts) >= 2:
+                port = parts[0]
+                vlan_text = parts[-1]
+                entry = trunks.setdefault(port, {"vlans_allowed": set(), "vlans_active": set(), "vlans_forwarding": set()})
+                entry[current_section] = expand_vlan_text(vlan_text)
+
+    return trunks
+
+
+def parse_show_interface_vlan(output: str) -> Tuple[Optional[str], Optional[str]]:
+    for raw in output.splitlines():
+        line = raw.strip()
+        m = re.search(r"Vlan\d+\s+is\s+([^,]+),\s+line protocol is\s+(.+)", line, re.I)
+        if m:
+            return m.group(1).strip().lower(), m.group(2).strip().lower()
+    return None, None
+
 def parse_full_ospf(output: str) -> int:
     return sum(1 for line in output.splitlines() if "FULL" in line.upper())
 
@@ -298,24 +348,68 @@ def test_switching(state: Dict[str, Any], sessions: Dict[str, Any]) -> List[Test
         if not conn:
             results.append(TestResult(f"{name} switching checks", False, "Skipped because SSH login failed."))
             continue
+
         vlan_out = cmd(conn, "show vlan brief")
+        trunk_out = cmd(conn, "show interfaces trunk")
+        ip_brief_out = cmd(conn, "show ip interface brief")
+        parsed_ip_brief = parse_ip_int_brief(ip_brief_out)
+        parsed_trunks = parse_show_interfaces_trunk(trunk_out)
+
         for vlan in device.get("required_vlans", []):
             ok = re.search(rf"^\s*{vlan}\s+\S+\s+active\b", vlan_out, re.I | re.M) is not None
             results.append(TestResult(f"{name} VLAN {vlan} exists", ok))
+
         for svi in device.get("required_svis", []):
-            int_out = get_run_interface(conn, svi["name"])
+            svi_name = svi["name"]
+            int_out = get_run_interface(conn, svi_name)
             ok_ip = svi["ip"] in int_out
-            no_shut = re.search(r"\bno shutdown\b", int_out, re.I) is not None
-            results.append(TestResult(f"{name} {svi['name']} has expected IP {svi['ip']}", ok_ip))
-            results.append(TestResult(f"{name} {svi['name']} is configured no shutdown", no_shut))
+            status, protocol = parsed_ip_brief.get(svi_name, (None, None))
+            not_admin_down = status is not None and status != "administratively"
+            svi_oper_out = cmd(conn, f"show interface {svi_name.lower()}")
+            oper_status, oper_protocol = parse_show_interface_vlan(svi_oper_out)
+            oper_known = oper_status is not None and oper_protocol is not None
+            results.append(TestResult(f"{name} {svi_name} has expected IP {svi['ip']}", ok_ip))
+            results.append(
+                TestResult(
+                    f"{name} {svi_name} is not administratively down",
+                    not_admin_down,
+                    f"Found state {status}/{protocol}." if status or protocol else "SVI not found in show ip interface brief.",
+                )
+            )
+            results.append(
+                TestResult(
+                    f"{name} {svi_name} operational state is known",
+                    oper_known,
+                    f"Found {oper_status}/{oper_protocol}." if oper_known else "Could not parse show interface output.",
+                )
+            )
+
         for trunk in device.get("trunk_ports", []):
             int_out = get_run_interface(conn, trunk["name"])
-            allowed = parse_allowed_vlans(int_out) or set()
             req = set(trunk["allowed_vlans"])
             ok_mode = is_trunk(int_out)
-            ok_vlans = req.issubset(allowed)
+            actual = parsed_trunks.get(trunk["name"], {})
+            allowed = actual.get("vlans_allowed", set())
+            active = actual.get("vlans_active", set())
+            forwarding = actual.get("vlans_forwarding", set())
+            ok_allowed = req.issubset(allowed)
+            ok_active = req.issubset(active) if active else False
             results.append(TestResult(f"{name} {trunk['name']} is trunk", ok_mode))
-            results.append(TestResult(f"{name} {trunk['name']} allows VLANs {sorted(req)}", ok_vlans, f"Found allowed VLANs: {sorted(allowed)}" if allowed else "No trunk allowed statement found."))
+            results.append(
+                TestResult(
+                    f"{name} {trunk['name']} allows VLANs {sorted(req)}",
+                    ok_allowed,
+                    f"Allowed on trunk: {sorted(allowed)}" if allowed else "Interface not present in show interfaces trunk allowed list.",
+                )
+            )
+            results.append(
+                TestResult(
+                    f"{name} {trunk['name']} has VLANs {sorted(req)} active on trunk",
+                    ok_active,
+                    f"Allowed+active: {sorted(active)}; forwarding: {sorted(forwarding)}",
+                )
+            )
+
         for access in device.get("access_ports", []):
             int_out = get_run_interface(conn, access["name"])
             vlan = parse_access_vlan(int_out)
@@ -324,7 +418,6 @@ def test_switching(state: Dict[str, Any], sessions: Dict[str, Any]) -> List[Test
             results.append(TestResult(f"{name} {access['name']} is access", ok_mode))
             results.append(TestResult(f"{name} {access['name']} access VLAN is {access['access_vlan']}", ok_vlan, f"Found VLAN {vlan}."))
     return results
-
 
 def test_device_pings(state: Dict[str, Any], sessions: Dict[str, Any]) -> List[TestResult]:
     results: List[TestResult] = []
