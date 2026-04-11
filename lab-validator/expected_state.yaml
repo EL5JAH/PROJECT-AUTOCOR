@@ -1,18 +1,56 @@
+# ==========================================================
+# LAB METADATA
+# ==========================================================
+# Human-readable identifier for this topology / validation target.
+# Useful for logs, artifacts, CI job output, and future multi-lab support.
 lab_name: AUTOCOR-LAB-EXPANDED
+
+# ==========================================================
+# DEVICE ACCESS
+# ==========================================================
+# Consumed by network_helpers.login_all() / connect_device().
+# These are the shared credentials used to log into the lab devices.
 credentials:
   username: cisco
   password: cisco
-  secret: cisco
+  secret: cisco # enable password for privilege exec mode
+
+# ==========================================================
+# DEVICE DEFINITIONS
+# ==========================================================
+# This is the main source of truth for the validator.
+#
+# baseline_validate.py reads this file and orchestrates the workflow.
+# network_helpers.py consumes these fields to decide:
+# - which devices to log into
+# - which interfaces should be up/up
+# - how many OSPF neighbors should be FULL
+# - which routes must exist
+# - which switch-specific VLAN / SVI / port checks to run
+# - which ACL entries and policy validations to enforce
 devices:
+  # ======================================================
+  # CORE ROUTER 1
+  # ======================================================
   cat8k-1:
     host: 172.16.0.1
     device_type: cisco_ios
     role: router
+
+    # These interfaces should appear in "show ip interface brief"
+    # and should be operationally up/up.
     expected_up_interfaces:
       - GigabitEthernet1
       - GigabitEthernet2
       - Loopback0
+
+    # Number of neighbors expected in FULL state from
+    # "show ip ospf neighbor".
     expected_full_ospf_neighbors: 1
+
+    # Critical routes that must be present in "show ip route".
+    # These reflect reachability to user VLANs, management VLAN,
+    # external/mgmt segment, and remote loopbacks.
     expected_routes:
       - 10.10.10.0/24
       - 10.20.20.0/24
@@ -20,10 +58,17 @@ devices:
       - 10.99.99.0/24
       - 192.168.50.0/24
       - 3.3.3.3/32
+
+  # ======================================================
+  # EDGE ROUTER / VLAN TERMINATION POINT
+  # ======================================================
   cat8k-2:
     host: 10.99.99.1
     device_type: cisco_ios
     role: router
+
+    # This router terminates the VLAN subinterfaces, so both the
+    # parent interface and child subinterfaces are important.
     expected_up_interfaces:
       - GigabitEthernet1
       - GigabitEthernet2
@@ -33,7 +78,12 @@ devices:
       - GigabitEthernet3.30
       - GigabitEthernet3.99
       - Loopback0
+
     expected_full_ospf_neighbors: 2
+
+    # These routes represent the full expected reachability view for cat8k-2:
+    # transit links, user VLANs, management VLAN, remote loopbacks, and the
+    # external/mgmt segment behind cat8k-3.
     expected_routes:
       - 172.16.0.0/30
       - 172.16.0.4/30
@@ -44,6 +94,9 @@ devices:
       - 1.1.1.1/32
       - 3.3.3.3/32
       - 192.168.50.0/24
+
+    # ACL validation for traffic policy between VLAN 20 and server VLAN.
+    # network_helpers.test_acl() checks both ACL existence and required lines.
     required_acls:
       - name: VLAN20_TO_SERVER
         lines:
@@ -51,15 +104,22 @@ devices:
           - permit icmp 10.20.20.0 0.0.0.255 10.30.30.0 0.0.0.255
           - deny ip 10.20.20.0 0.0.0.255 10.30.30.0 0.0.0.255
           - permit ip any any
+
+  # ======================================================
+  # EDGE ROUTER 3 (MGMT / EXTERNAL SIDE)
+  # ======================================================
   cat8k-3:
     host: 192.168.50.1
     device_type: cisco_ios
     role: router
+
     expected_up_interfaces:
       - GigabitEthernet1
       - GigabitEthernet2
       - Loopback0
+
     expected_full_ospf_neighbors: 1
+
     expected_routes:
       - 10.10.10.0/24
       - 10.20.20.0/24
@@ -67,24 +127,38 @@ devices:
       - 10.99.99.0/24
       - 1.1.1.1/32
       - 2.2.2.2/32
+
+  # ======================================================
+  # DISTRIBUTION SWITCH 1
+  # ======================================================
   dist-sw1:
     host: 10.99.99.11
     device_type: cisco_ios
     role: switch
+
+    # These interfaces are expected to be operational.
+    # Includes trunks, access ports, and the management SVI.
     expected_up_interfaces:
       - GigabitEthernet0/0
       - GigabitEthernet0/1
       - GigabitEthernet0/2
       - GigabitEthernet0/3
       - Vlan99
+
+    # VLANs that must exist and be active on the switch.
     required_vlans:
       - 10
       - 20
       - 30
       - 99
+
+    # SVIs to validate for presence, addressing, and operational state.
     required_svis:
       - name: Vlan99
         ip: 10.99.99.11
+
+    # Trunk ports and the VLANs they are expected to carry.
+    # network_helpers checks trunk mode, allowed VLANs, and active VLANs.
     trunk_ports:
       - name: GigabitEthernet0/0
         allowed_vlans:
@@ -98,28 +172,38 @@ devices:
           - 20
           - 30
           - 99
+
+    # Access ports and their required VLAN assignments.
     access_ports:
       - name: GigabitEthernet0/1
         access_vlan: 10
       - name: GigabitEthernet0/3
-        access_vlan: 99
+        access_vlan: 99 # automation-host access port
+
+  # ======================================================
+  # DISTRIBUTION SWITCH 2
+  # ======================================================
   dist-sw2:
     host: 10.99.99.12
     device_type: cisco_ios
     role: switch
+
     expected_up_interfaces:
       - GigabitEthernet0/0
       - GigabitEthernet0/1
       - GigabitEthernet0/2
       - Vlan99
+
     required_vlans:
       - 10
       - 20
       - 30
       - 99
+
     required_svis:
       - name: Vlan99
         ip: 10.99.99.12
+
     trunk_ports:
       - name: GigabitEthernet0/0
         allowed_vlans:
@@ -127,11 +211,19 @@ devices:
           - 20
           - 30
           - 99
+
     access_ports:
       - name: GigabitEthernet0/1
         access_vlan: 20
       - name: GigabitEthernet0/2
         access_vlan: 30
+
+# ==========================================================
+# LOCAL MACHINE VALIDATION
+# ==========================================================
+# These are simple reachability tests from the automation host itself.
+# They run before the deeper SSH-based checks and help prove the validator
+# host has basic L3 reachability into the lab.
 local_ping_targets:
   - name: cat8k-2 vlan99 gateway
     ip: 10.99.99.1
@@ -149,6 +241,19 @@ local_ping_targets:
     ip: 172.16.0.1
   - name: cat8k-3 mgmt-lan ip
     ip: 192.168.50.1
+
+# ==========================================================
+# DEVICE-ORIGINATED VALIDATION
+# ==========================================================
+# Consumed by network_helpers.test_device_pings().
+#
+# These are end-to-end validation tests run from the devices themselves.
+# Each entry defines:
+# - which device originates the ping
+# - target IP
+# - optional source IP
+# - repeat count
+# - minimum acceptable success rate
 device_ping_tests:
   - name: cat8k-2 to client-a
     device: cat8k-2
@@ -156,94 +261,132 @@ device_ping_tests:
     source_ip: 10.10.10.1
     repeat: 3
     min_success: 100
+
   - name: cat8k-2 to client-b
     device: cat8k-2
     target_ip: 10.20.20.10
     source_ip: 10.20.20.1
     repeat: 3
     min_success: 100
+
   - name: cat8k-2 to server-a
     device: cat8k-2
     target_ip: 10.30.30.10
     source_ip: 10.30.30.1
     repeat: 3
     min_success: 100
+
   - name: cat8k-2 to automation-host
     device: cat8k-2
     target_ip: 10.99.99.50
     source_ip: 10.99.99.1
     repeat: 3
     min_success: 100
+
   - name: cat8k-1 to client-a
     device: cat8k-1
     target_ip: 10.10.10.10
     repeat: 3
     min_success: 100
+
   - name: cat8k-1 to server-a
     device: cat8k-1
     target_ip: 10.30.30.10
     repeat: 3
     min_success: 100
+
   - name: cat8k-3 to automation-host
     device: cat8k-3
     target_ip: 10.99.99.10
     repeat: 3
     min_success: 100
+
   - name: cat8k-3 to client-b
     device: cat8k-3
     target_ip: 10.20.20.10
     repeat: 3
     min_success: 100
+
+# ==========================================================
+# VLAN 99 POLICY VALIDATION
+# ==========================================================
+# Consumed by network_helpers.test_vlan99_policy().
+#
+# These checks validate lab-specific intent, not just generic switch health.
+# This section defines where VLAN 99 MUST exist and where it MUST NOT be used.
 vlan99_policy:
   must_exist_on:
+    # Router-on-a-stick termination for VLAN 99
     cat8k_2_subinterface:
       device: cat8k-2
       interface: GigabitEthernet3.99
       ip: 10.99.99.1
+
+    # dist-sw1 trunk toward cat8k-2 must carry VLAN 99
     dist_sw1_trunk_to_cat8k2:
       device: dist-sw1
       interface: GigabitEthernet0/0
       mode: trunk
       allowed_vlan_must_include: 99
+
+    # dist-sw1 trunk toward dist-sw2 must also carry VLAN 99
     dist_sw1_trunk_to_distsw2:
       device: dist-sw1
       interface: GigabitEthernet0/2
       mode: trunk
       allowed_vlan_must_include: 99
+
+    # dist-sw2 trunk back toward dist-sw1 must carry VLAN 99
     dist_sw2_trunk_to_distsw1:
       device: dist-sw2
       interface: GigabitEthernet0/0
       mode: trunk
       allowed_vlan_must_include: 99
+
+    # automation-host must be connected on an access port in VLAN 99
     dist_sw1_access_to_automation_host:
       device: dist-sw1
       interface: GigabitEthernet0/3
       mode: access
       access_vlan: 99
+
+    # switch management SVIs for VLAN 99
     dist_sw1_vlan99_svi:
       device: dist-sw1
       interface: Vlan99
       ip: 10.99.99.11
+
     dist_sw2_vlan99_svi:
       device: dist-sw2
       interface: Vlan99
       ip: 10.99.99.12
+
   must_not_be_used_on:
+    # User- and server-facing access ports must not be placed in VLAN 99
     dist_sw1_client_a:
       device: dist-sw1
       interface: GigabitEthernet0/1
       mode: access
       access_vlan_must_not_be: 99
+
     dist_sw2_client_b:
       device: dist-sw2
       interface: GigabitEthernet0/1
       mode: access
       access_vlan_must_not_be: 99
+
     dist_sw2_server_a:
       device: dist-sw2
       interface: GigabitEthernet0/2
       mode: access
       access_vlan_must_not_be: 99
+
+# ==========================================================
+# LOGGING CONFIG
+# ==========================================================
+# baseline_validate.py currently consumes level / console / file directly.
+# The extra fields are kept for clarity and future enhancement so the state
+# file remains expressive and forward-compatible.
 logging:
   directory: logs
   filename_prefix: baseline_validate
