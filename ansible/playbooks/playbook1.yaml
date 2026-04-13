@@ -1,0 +1,14 @@
+---
+- name: Run show ip int br on Cisco desvices
+  hosts: cisco
+  gather_facts: no
+
+  takss:
+    - name: Execute show ip int brief commands
+      ansible.netcommon.cli_command:
+        command: show ip int brief
+      register: output
+
+    - name: Display command output
+      ansible.builtin.debug:
+        msg: "{{ output.stdout_lines }}"
