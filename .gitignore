@@ -18,7 +18,7 @@ id_ed25519*
 # =========================
 # Python
 # =========================
-venv/
+.venv/
 .AUTOCOR/
 env/
 __pycache__/
@@ -72,15 +72,22 @@ docker-compose.override.yml
 topology/*.generated.yaml
 topology/*rendered*.yaml
 
-# =========================
-# Inventory
+# =================================================
+# Ansible Inventory
 # Keep examples tracked, ignore real inventories
-# =========================
-inventory/*.yml
-inventory/*.yaml
-!inventory/example*.yml
-!inventory/example*.yaml
-!inventory/group_vars/
-!inventory/host_vars/
-inventory/group_vars/*vault*
-inventory/host_vars/*vault*
+# =================================================
+
+# Track main inventory (sanitized)
+!ansible/inventory/hosts.yml
+
+# Ignore all group/host vars by default (these may contain secrets)
+ansible/inventory/group_vars/*
+ansible/inventory/host_vars/*
+
+# Allow example/template files
+!ansible/inventory/group_vars/*.example.yml
+!ansible/inventory/host_vars/*.example.yml
+
+# Explicitly ignore vault files (even if someone misnames them)
+ansible/inventory/group_vars/*vault*
+ansible/inventory/host_vars/*vault*

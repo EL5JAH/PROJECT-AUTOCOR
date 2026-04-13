@@ -1,0 +1,38 @@
+---
+all:
+  children:
+    iosxe:
+      vars:
+        ansible_connection: ansible.netcommon.network_cli
+        ansible_network_os: cisco.ios.ios
+        ansible_become: true
+        ansible_become_method: enable
+
+      hosts:
+        cat8k-1:
+          # Reachable through the routed path:
+          # automation-host -> dist-sw1 -> cat8k-2 -> cat8k-1
+          ansible_host: 172.16.0.1
+
+        cat8k-2:
+          # Best reachable address from automation-host side
+          ansible_host: 172.16.1.1
+
+        cat8k-3:
+          # Transit-facing address toward cat8k-2
+          # Note: this device may need a return route/default route
+          # to reach 10.99.99.0/24 before Ansible can manage it reliably.
+          ansible_host: 172.16.0.6
+
+        dist-sw1:
+          # Directly connected to automation-host subnet
+          ansible_host: 10.99.99.1
+
+        dist-sw2:
+          # Routed behind dist-sw1
+          ansible_host: 172.16.1.6
+
+    automation_host:
+      hosts:
+        localhost:
+          ansible_connection: local
