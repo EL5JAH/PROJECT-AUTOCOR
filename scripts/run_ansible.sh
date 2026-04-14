@@ -47,6 +47,24 @@ mkdir -p "${RUN_DIR}"
 export ANSIBLE_CONFIG="${ANSIBLE_CONFIG_FILE}"
 
 ###############################################################
+# NEW: Vault helper and optional environment file paths
+#
+# Purpose:
+# - Validate that the executable vault helper created by bootstrap
+#   exists before Ansible is launched
+# - Optionally auto-load ANSIBLE_VAULT_PASSWORD from a local file
+#   that is NOT stored in the repo
+#
+# Notes:
+# - VAULT_HELPER should match the path configured in ansible.cfg
+# - VAULT_ENV_FILE is optional and intended for lab convenience
+# - The env file should contain a line like:
+#     export ANSIBLE_VAULT_PASSWORD='your-password'
+###############################################################
+VAULT_HELPER="/home/cisco/.ansible/get_vault_pass.sh"
+VAULT_ENV_FILE="/home/cisco/.ansible/.vault_env"
+
+###############################################################
 # Basic validation
 ###############################################################
 if [[ ! -f "${ANSIBLE_CONFIG_FILE}" ]]; then
@@ -56,6 +74,65 @@ fi
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found at ${INVENTORY_FILE}" >&2
+  exit 1
+fi
+
+###############################################################
+# NEW: Validate vault helper script exists
+#
+# Why this check exists:
+# - ansible.cfg now points vault_password_file to an executable
+#   helper script instead of a plaintext password file
+# - If bootstrap did not create the helper, Ansible would fail later
+# - This fails early with a clearer message
+###############################################################
+if [[ ! -f "${VAULT_HELPER}" ]]; then
+  echo "ERROR: vault helper script not found at ${VAULT_HELPER}" >&2
+  echo "ERROR: bootstrap is incomplete or the helper path is incorrect." >&2
+  exit 1
+fi
+
+###############################################################
+# NEW: Auto-load ANSIBLE_VAULT_PASSWORD if not already set
+#
+# Load order:
+# 1) If ANSIBLE_VAULT_PASSWORD is already exported in the shell,
+#    leave it alone
+# 2) Otherwise, if /home/cisco/.ansible/.vault_env exists, source it
+# 3) If the variable is still missing, fail with a clear message
+#
+# Why source a file:
+# - This avoids hardcoding the password in the repo
+# - This avoids requiring the user to export it manually every time
+# - The file remains outside the repo and can be ignored by Git
+#
+# Important:
+# - The env file should be readable only by the cisco user
+# - The env file should not be echoed or logged
+###############################################################
+VAULT_ENV_SOURCE="pre-set"
+
+if [[ -z "${ANSIBLE_VAULT_PASSWORD:-}" ]]; then
+  if [[ -f "${VAULT_ENV_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${VAULT_ENV_FILE}"
+    VAULT_ENV_SOURCE="loaded_from_file"
+  else
+    VAULT_ENV_SOURCE="missing"
+  fi
+fi
+
+###############################################################
+# NEW: Fail clearly if the vault password is still unavailable
+#
+# This check protects the helper script path from failing later with
+# a less obvious error. The runner explains exactly what is missing.
+###############################################################
+if [[ -z "${ANSIBLE_VAULT_PASSWORD:-}" ]]; then
+  echo "ERROR: ANSIBLE_VAULT_PASSWORD is not set." >&2
+  echo "ERROR: Export it in your shell or create ${VAULT_ENV_FILE}." >&2
+  echo "ERROR: Example content for ${VAULT_ENV_FILE}:" >&2
+  echo "ERROR:   export ANSIBLE_VAULT_PASSWORD='your-password'" >&2
   exit 1
 fi
 
@@ -83,6 +160,9 @@ fi
   echo "ansible_dir=${ANSIBLE_DIR}"
   echo "ansible_config=${ANSIBLE_CONFIG_FILE}"
   echo "inventory=${INVENTORY_FILE}"
+  echo "vault_helper=${VAULT_HELPER}"
+  echo "vault_env_file=${VAULT_ENV_FILE}"
+  echo "vault_env_source=${VAULT_ENV_SOURCE}"
   echo "cwd=$(pwd)"
   echo "user=$(whoami)"
   echo "command=$*"
@@ -97,6 +177,7 @@ echo "Config    : ${ANSIBLE_CONFIG_FILE}"
 echo "Inventory : ${INVENTORY_FILE}"
 echo "Run dir   : ${RUN_DIR}"
 echo "Log file  : ${LOG_FILE}"
+echo "Vault src : ${VAULT_ENV_SOURCE}"
 echo "============================================================"
 
 ###############################################################
