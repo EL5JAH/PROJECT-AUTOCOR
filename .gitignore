@@ -91,3 +91,7 @@ ansible/inventory/host_vars/*
 # Explicitly ignore vault files (even if someone misnames them)
 ansible/inventory/group_vars/*vault*
 ansible/inventory/host_vars/*vault*
+
+# Vault password file 
+.vault_pass
+~/.ansible/.vault_pass*
