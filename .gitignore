@@ -92,6 +92,20 @@ ansible/inventory/host_vars/*
 ansible/inventory/group_vars/*vault*
 ansible/inventory/host_vars/*vault*
 
-# Vault password file 
+# -------------------------------------------------------------
+# Ansible secret files
+# -------------------------------------------------------------
+*.vault
+*.vault.yml
+*.vault.yaml
+
+# Explicit vault password artifacts (just in case)
 .vault_pass
-~/.ansible/.vault_pass*
+.vault_pass.txt
+*.vault_pass*
+
+# -------------------------------------------------------------
+# Ansible vault local environment (contains secrets)
+# -------------------------------------------------------------
+.vault_env
+*.vault_env
