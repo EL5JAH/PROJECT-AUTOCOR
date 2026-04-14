@@ -27,10 +27,24 @@ all:
         dist-sw1:
           # Directly connected to automation-host subnet
           ansible_host: 10.99.99.1
+          ansible_network_cli_ssh_type: paramiko
+          ansible_ssh_common_args: >-
+            -o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
+            -o HostKeyAlgorithms=+ssh-rsa
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa
+            -o StrictHostKeyChecking=no
+            -o UserKnownHostsFile=/dev/null
 
         dist-sw2:
           # Routed behind dist-sw1
           ansible_host: 172.16.1.6
+          ansible_network_cli_ssh_type: paramiko
+          ansible_ssh_common_args: >-
+            -o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
+            -o HostKeyAlgorithms=+ssh-rsa
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa
+            -o StrictHostKeyChecking=no
+            -o UserKnownHostsFile=/dev/null
 
     automation_host:
       hosts:

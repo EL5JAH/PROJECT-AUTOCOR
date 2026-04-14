@@ -1,9 +1,9 @@
 ---
-- name: Run show ip int br on Cisco desvices
-  hosts: cisco
+- name: Run show ip int br on Cisco devices
+  hosts: iosxe
   gather_facts: no
 
-  takss:
+  tasks:
     - name: Execute show ip int brief commands
       ansible.netcommon.cli_command:
         command: show ip int brief

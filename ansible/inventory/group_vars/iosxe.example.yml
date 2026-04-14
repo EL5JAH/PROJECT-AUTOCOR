@@ -1,4 +1,0 @@
----
-ansible_user: "<username>"
-ansible_password: "<password>"
-ansible_become_password: "<enable_password>"
