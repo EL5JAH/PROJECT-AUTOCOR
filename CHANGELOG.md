@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - Security & Execution Model Overhaul - 2026-04-14
+
+### Added
+
+- Added `scripts/setup_local_secrets.sh` for secure, one-time vault password initialization
+- Added dynamic vault password helper (`get_vault_pass.sh`) for runtime retrieval
+- Added optional local environment file (`~/.ansible/.vault_env`) for zero-touch execution
+- Added automatic environment variable loading in `run_ansible.sh`
+- Added validation checks for vault helper presence and required environment variables
+- Added vault source tracking (`pre-set` vs `loaded_from_file`) in run metadata
+- Added bootstrap provisioning of `.ansible` directory with secure permissions
+
+### Changed
+
+- Refactored vault handling to use runtime environment variables instead of static password files
+- Updated `ansible.cfg` to use executable vault helper script
+- Updated `run_ansible.sh`:
+  - Correct repo root resolution from `scripts/`
+  - Proper `ansible.cfg` discovery
+  - Improved error handling and execution flow
+- Standardized execution path: `./scripts/run_ansible.sh`
+- Removed dependency on `~/.ansible/.vault_pass.txt`
+
+### Security
+
+- Eliminated plaintext vault password file storage
+- Ensured vault password is never exposed in logs or console output
+- Enforced strict permissions:
+  - `.ansible/` → `700`
+  - Helper scripts → `700`
+- Updated `.gitignore` to exclude all local secret artifacts
+
+### ⚠️ Important Changes
+
+- Vault password must now be provided via environment variable:
+  - ANSIBLE_VAULT_PASSWORD
+- For automated runs, the variable can be sourced from:
+  - ~/.ansible/.vault_env
+- Ansible retrieves the vault password via an executable helper script at runtime, which must output only the password
+
 ## [0.3.0] - Automation maturity milestone: secure credentials, execution wrapper, and SSH compatibility - 2026-04-13
 
 ### Added
