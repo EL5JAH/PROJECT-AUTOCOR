@@ -15,19 +15,30 @@ set -euo pipefail
 # - Accepts either a playbook path or ad-hoc ansible arguments
 #
 # Examples:
-#   ./ansible/run_ansible.sh playbooks/playbook1.yaml
-#   ./ansible/run_ansible.sh playbooks/playbook1.yaml -l cat8k-1
-#   ./ansible/run_ansible.sh playbooks/playbook1.yaml -t validate
-#   ./ansible/run_ansible.sh --adhoc iosxe -m ansible.netcommon.cli_command -a "command=show version"
+#   ./scripts/run_ansible.sh playbooks/playbook1.yaml
+#   ./scripts/run_ansible.sh playbooks/playbook1.yaml -l cat8k-1
+#   ./scripts/run_ansible.sh playbooks/playbook1.yaml -t validate
+#   ./scripts/run_ansible.sh --adhoc iosxe -m ansible.netcommon.cli_command -a "command=show version"
 ###############################################################
 
+# Absolute path to the directory this wrapper script lives in.
+# Example:
+#   /opt/labrepo/scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANSIBLE_DIR="${SCRIPT_DIR}"
-REPO_ROOT="$(cd "${ANSIBLE_DIR}/.." && pwd)"
+
+# Repo root is one level above the scripts/ directory.
+# Example:
+#   /opt/labrepo
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Ansible content lives under the repo's ansible/ directory.
+# Example:
+#   /opt/labrepo/ansible
+ANSIBLE_DIR="${REPO_ROOT}/ansible"
 
 # Project config and inventory paths
 ANSIBLE_CONFIG_FILE="${ANSIBLE_DIR}/ansible.cfg"
-INVENTORY_FILE="${ANSIBLE_DIR}/inventory/hosts.yml"
+INVENTORY_FILE="${ANSIBLE_DIR}/inventory/hosts.yaml"
 
 # Timestamped artifact directory for this execution
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
