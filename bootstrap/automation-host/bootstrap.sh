@@ -192,6 +192,7 @@ pip install -r requirements.txt"
 if [[ -d "${REPO_DIR}/scripts" ]]; then
     echo "Setting execute permissions on repo scripts..."
     find "${REPO_DIR}/scripts" -type f -name "*.sh" -exec chmod 755 {} \;
+fi
 
 echo "Creating helper commands..."
 cat >/usr/local/bin/labenv <<'EOF'
