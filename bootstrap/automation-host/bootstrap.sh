@@ -187,6 +187,12 @@ source .venv/bin/activate &&
 pip install --upgrade pip &&
 pip install -r requirements.txt"
 
+# Ensure repo scripts are executable by the owner/group/others as appropriate.
+# This prevents needing to manually chmod scripts after bootstrap.
+if [[ -d "${REPO_DIR}/scripts" ]]; then
+    echo "Setting execute permissions on repo scripts..."
+    find "${REPO_DIR}/scripts" -type f -name "*.sh" -exec chmod 755 {} \;
+
 echo "Creating helper commands..."
 cat >/usr/local/bin/labenv <<'EOF'
 #!/usr/bin/env bash
