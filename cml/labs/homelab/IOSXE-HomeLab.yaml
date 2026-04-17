@@ -534,8 +534,12 @@ nodes:
                 fi
 
                 echo "Installing required packages..."
-                apt-get update -y
-                apt-get install -y \
+                for i in 1 2 3; do
+                  sudo apt-get update -y && break
+                  echo "apt-get update failed, retrying in 10 seconds..."
+                  sleep 10
+                done
+                apt-get install -y --fix-missing\
                     git \
                     python3 \
                     python3-pip \
@@ -644,6 +648,7 @@ nodes:
 
                 mkdir -p /opt/bootstrap
                 mkdir -p /opt
+                chown cisco:cisco /opt      # Give cisco ownership so it can create labrepo
 
                 echo "Preparing repo directory..."
 
@@ -653,7 +658,7 @@ nodes:
                 fi
 
                 echo "Cloning repo from ${REPO_URL} ..."
-                if ! git clone "${REPO_URL}" "${REPO_DIR}"; then
+                if ! sudo -u cisco git clone "${REPO_URL}" "${REPO_DIR}"; then
                     echo "Bootstrap failed: git clone failed."
                     echo "BOOTSTRAP_STATE=failed_git_clone" > "$STATUS_FILE"
                     echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"

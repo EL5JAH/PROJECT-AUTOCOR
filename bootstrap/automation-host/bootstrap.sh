@@ -43,8 +43,12 @@ if ! ping -c 1 8.8.8.8 >/dev/null 2>&1; then
 fi
 
 echo "Installing required packages..."
-apt-get update -y
-apt-get install -y \
+for i in 1 2 3; do
+  sudo apt-get update -y && break
+  echo "apt-get update failed, retrying in 10 seconds..."
+  sleep 10
+done
+apt-get install -y --fix-missing\
     git \
     python3 \
     python3-pip \
