@@ -153,6 +153,7 @@ echo "Ansible vault password helper created successfully."
 
 mkdir -p /opt/bootstrap
 mkdir -p /opt
+chown cisco:cisco /opt      # Give cisco ownership so it can create labrepo
 
 echo "Preparing repo directory..."
 
@@ -162,7 +163,7 @@ if [[ -d "${REPO_DIR}" ]]; then
 fi
 
 echo "Cloning repo from ${REPO_URL} ..."
-if ! git clone "${REPO_URL}" "${REPO_DIR}"; then
+if ! sudo -u cisco git clone "${REPO_URL}" "${REPO_DIR}"; then
     echo "Bootstrap failed: git clone failed."
     echo "BOOTSTRAP_STATE=failed_git_clone" > "$STATUS_FILE"
     echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"

@@ -150,14 +150,14 @@ fi
 if [[ $# -lt 1 ]]; then
   cat <<'EOF'
 Usage:
-  ./ansible/run_ansible.sh <playbook_path> [additional ansible-playbook args...]
-  ./ansible/run_ansible.sh --adhoc <pattern> [ansible args...]
+  ./scripts/run_ansible.sh <playbook_path> [additional ansible-playbook args...]
+  ./scripts/run_ansible.sh --adhoc <pattern> [ansible args...]
 
 Examples:
-  ./ansible/run_ansible.sh playbooks/playbook1.yaml
-  ./ansible/run_ansible.sh playbooks/playbook1.yaml -l cat8k-1
-  ./ansible/run_ansible.sh playbooks/playbook1.yaml -t validate
-  ./ansible/run_ansible.sh --adhoc iosxe -m ansible.netcommon.cli_command -a "command=show ip int brief"
+  ./scripts/run_ansible.sh playbooks/playbook1.yaml
+  ./scripts/run_ansible.sh playbooks/playbook1.yaml -l cat8k-1
+  ./scripts/run_ansible.sh playbooks/playbook1.yaml -t validate
+  ./scripts/run_ansible.sh --adhoc iosxe -m ansible.netcommon.cli_command -a "command=show ip int brief"
 EOF
   exit 1
 fi
@@ -190,6 +190,30 @@ echo "Run dir   : ${RUN_DIR}"
 echo "Log file  : ${LOG_FILE}"
 echo "Vault src : ${VAULT_ENV_SOURCE}"
 echo "============================================================"
+
+###############################################################
+# Vault environment loading + validation
+#
+# Purpose:
+# - Ensure ANSIBLE_VAULT_PASSWORD is available for vault helper
+# - Fail early with a clear message instead of cryptic Ansible error
+###############################################################
+
+VAULT_ENV_FILE="/home/cisco/.ansible/.vault_env"
+
+# Load vault env if present
+if [[ -f "${VAULT_ENV_FILE}" ]]; then
+  # shellcheck disable=SC1091
+  source "${VAULT_ENV_FILE}"
+fi
+
+# Validate vault password is set
+if [[ -z "${ANSIBLE_VAULT_PASSWORD:-}" ]]; then
+  echo "ERROR: ANSIBLE_VAULT_PASSWORD is not set."
+  echo "Expected source: ${VAULT_ENV_FILE}"
+  echo "Run scripts/setup_local_secrets.sh to initialize local secrets."
+  exit 1
+fi
 
 ###############################################################
 # Support two modes:
