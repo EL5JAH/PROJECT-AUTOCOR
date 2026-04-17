@@ -126,7 +126,7 @@ unset VAULT_PASSWORD_2
 # Create local iosxe group_vars (device credentials)
 ###############################################################
 
-GROUP_VARS_DIR="${REPO_ROOT}/ansible/group_vars"
+GROUP_VARS_DIR="${REPO_ROOT}/ansible/inventory/group_vars"
 IOSXE_VARS_FILE="${GROUP_VARS_DIR}/iosxe.yml"
 # Track whether we created/overwrote the file
 IOSXE_CREATED=false
