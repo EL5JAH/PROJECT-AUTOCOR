@@ -31,6 +31,8 @@ set -euo pipefail
 # Directory and file used by the local vault environment.
 ANSIBLE_LOCAL_DIR="/home/cisco/.ansible"
 VAULT_ENV_FILE="${ANSIBLE_LOCAL_DIR}/.vault_env"
+# Resolve repo root dynamically
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 ###############################################################
 # Basic sanity checks
@@ -121,14 +123,112 @@ unset VAULT_PASSWORD_1
 unset VAULT_PASSWORD_2
 
 ###############################################################
+# Create local iosxe group_vars (device credentials)
+###############################################################
+
+GROUP_VARS_DIR="${REPO_ROOT}/ansible/group_vars"
+IOSXE_VARS_FILE="${GROUP_VARS_DIR}/iosxe.yml"
+# Track whether we created/overwrote the file
+IOSXE_CREATED=false
+
+mkdir -p "${GROUP_VARS_DIR}"
+chmod 700 "${GROUP_VARS_DIR}"
+
+confirm_overwrite() {
+    local target_file="$1"
+
+    if [[ -e "${target_file}" ]]; then
+        read -r -p "File exists: ${target_file}. Overwrite? [y/N]: " reply
+        case "${reply}" in
+            y|Y|yes|YES) ;;
+            *) 
+                echo "Skipping iosxe.yml creation."
+                return 1
+                ;;
+        esac
+    fi
+    return 0
+}
+
+prompt_secret() {
+    local prompt_text="$1"
+    local val1=""
+    local val2=""
+
+    while true; do
+        read -r -s -p "${prompt_text}: " val1
+        echo
+        read -r -s -p "Confirm ${prompt_text}: " val2
+        echo
+
+        if [[ "${val1}" != "${val2}" ]]; then
+            echo "Values did not match. Try again."
+            continue
+        fi
+
+        [[ -z "${val1}" ]] && echo "Value cannot be empty." && continue
+
+        printf '%s' "${val1}"
+        return 0
+    done
+}
+
+prompt_value() {
+    local prompt_text="$1"
+    local val=""
+
+    while true; do
+        read -r -p "${prompt_text}: " val
+        [[ -z "${val}" ]] && echo "Value cannot be empty." && continue
+        printf '%s' "${val}"
+        return 0
+    done
+}
+
+echo
+echo "Setting up local iosxe credentials..."
+
+DEVICE_USERNAME="$(prompt_value "Device username")"
+DEVICE_PASSWORD="$(prompt_secret "Device login password")"
+ENABLE_PASSWORD="$(prompt_secret "Device enable password")"
+
+if confirm_overwrite "${IOSXE_VARS_FILE}"; then
+    cat > "${IOSXE_VARS_FILE}" <<EOF
+---
+ansible_user: ${DEVICE_USERNAME}
+ansible_password: ${DEVICE_PASSWORD}
+ansible_become_password: ${ENABLE_PASSWORD}
+EOF
+
+    chmod 600 "${IOSXE_VARS_FILE}"
+    IOSXE_CREATED=true
+    echo "Created ${IOSXE_VARS_FILE}"
+fi
+
+###############################################################
 # Final success message
 ###############################################################
-echo "Local vault environment file created successfully:"
+echo "Local secrets configured successfully:"
+echo
+echo "Vault environment file:"
 echo "  ${VAULT_ENV_FILE}"
+echo
+echo "IOSXE group vars file:"
+if [[ "${IOSXE_CREATED}" == true ]]; then
+  echo "  ${IOSXE_VARS_FILE}"
+else
+  echo "  (unchanged)"
+fi
 echo
 echo "Permissions set:"
 echo "  directory: ${ANSIBLE_LOCAL_DIR} (700)"
-echo "  file     : ${VAULT_ENV_FILE} (600)"
+echo "  vault env: ${VAULT_ENV_FILE} (600)"
+echo "  group vars: ${IOSXE_VARS_FILE} (600)"
+echo
+echo "Validation steps:"
+echo "  source ${VAULT_ENV_FILE}"
+echo "  ANSIBLE_CONFIG=${REPO_ROOT}/ansible/ansible.cfg \\"
+echo "  ansible-inventory -i ${REPO_ROOT}/ansible/inventory/hosts.yaml --host cat8k-1"
 echo
 echo "You can now run Ansible normally, for example:"
 echo "  ./scripts/run_ansible.sh playbooks/playbook1.yaml -t validate"

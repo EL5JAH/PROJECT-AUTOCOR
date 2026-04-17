@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - Zero-touch automation-host provisioning and secret management hardening - 2026-04-17
+
+### Added
+
+- Extended `scripts/setup_local_secrets.sh` to provision local `ansible/group_vars/iosxe.yml` for device authentication
+- Added secure prompts for device username, login password, and enable password
+- Added creation of local-only IOS XE Ansible credential vars outside tracked repo content
+- Added validation guidance in the script success output for checking resolved inventory variables
+- Added vault environment auto-loading in `run_ansible.sh` from `~/.ansible/.vault_env`
+- Added early validation for `ANSIBLE_VAULT_PASSWORD` so Ansible runs fail fast with a clear message before vault helper execution
+- Added automatic execute-permission handling for repo shell scripts during bootstrap to reduce post-build manual setup
+
+### Changed
+
+- Updated the local secret setup success message to report both `.vault_env` and `iosxe.yml`
+- Improved local secret setup flow to better support zero-touch Ansible runs on freshly bootstrapped automation hosts
+- Updated bootstrap cloning flow to run repository operations as the `cisco` user instead of root
+- Updated virtual environment creation and related repo operations to preserve consistent `cisco` ownership
+- Improved bootstrap reliability by adding retry logic and fail-fast handling for `apt-get update`
+
+### Fixed
+
+- Resolved Ansible authentication failures caused by missing local `group_vars/iosxe.yml` on hosts cloned from the public repo
+- Clarified the separation between vault password loading and device credential provisioning in the local secret workflow
+- Fixed bootstrap permission issues that led to Git ownership and virtual environment access problems
+- Fixed bootstrap script execution readiness so `/scripts` content no longer requires manual `chmod`
+- Fixed a bootstrap syntax error caused by a missing `fi` in the script-permissions block
+
 ## [0.4.0] - Security & Execution Model Overhaul - 2026-04-14
 
 ### Added
