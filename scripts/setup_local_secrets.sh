@@ -195,9 +195,9 @@ ENABLE_PASSWORD="$(prompt_secret "Device enable password")"
 if confirm_overwrite "${IOSXE_VARS_FILE}"; then
     cat > "${IOSXE_VARS_FILE}" <<EOF
 ---
-ansible_user: ${DEVICE_USERNAME}
-ansible_password: ${DEVICE_PASSWORD}
-ansible_become_password: ${ENABLE_PASSWORD}
+ansible_user: '${DEVICE_USERNAME}'
+ansible_password: '${DEVICE_PASSWORD}'
+ansible_become_password: '${ENABLE_PASSWORD}'
 EOF
 
     chmod 600 "${IOSXE_VARS_FILE}"
