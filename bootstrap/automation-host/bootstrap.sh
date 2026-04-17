@@ -44,11 +44,11 @@ fi
 
 echo "Installing required packages..."
 for i in 1 2 3; do
-  sudo apt-get update -y && break
+  apt-get update -y && break
   echo "apt-get update failed, retrying in 10 seconds..."
   sleep 10
 done
-apt-get install -y --fix-missing\
+apt-get install -y --fix-missing \
     git \
     python3 \
     python3-pip \
@@ -175,16 +175,17 @@ if ! sudo -u cisco git clone "${REPO_URL}" "${REPO_DIR}"; then
 fi
 
 cd "${REPO_DIR}"
-git checkout test-baseline_validate
-git status
+sudo -u cisco git checkout test-baseline_validate
+sudo -u cisco git status
 
 echo "Creating Python virtual environment..."
-python3 -m venv .venv
+sudo -u cisco python3 -m venv .venv
 
 echo "Installing Python requirements..."
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+sudo -u cisco bash -c "
+source .venv/bin/activate &&
+pip install --upgrade pip &&
+pip install -r requirements.txt"
 
 echo "Creating helper commands..."
 cat >/usr/local/bin/labenv <<'EOF'
