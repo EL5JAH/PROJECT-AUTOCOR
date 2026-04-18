@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - Fix credential prompt handling for reliable secret input - 2026-04-17
+
+### Fixed
+
+- Fixed interactive credential prompt handling in `setup_local_secrets.sh`
+- Eliminated subshell usage from command substitution during secret input
+- Corrected pass-by-name prompt helper functions for proper variable assignment
+- Resolved prompt hangs and inconsistent input behavior during execution
+- Fixed leading newline (`\n`) injection in credential values
+- Restored reliable generation of `iosxe.yml` for Ansible authentication
+
 ## [0.5.0] - Zero-touch automation-host provisioning and secret management hardening - 2026-04-17
 
 ### Added

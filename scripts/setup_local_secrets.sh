@@ -151,36 +151,59 @@ confirm_overwrite() {
 }
 
 prompt_secret() {
-    local prompt_text="$1"
+    local __resultvar="$1"
+    local prompt_text="$2"
     local val1=""
     local val2=""
 
     while true; do
-        read -r -s -p "${prompt_text}: " val1
-        echo
-        read -r -s -p "Confirm ${prompt_text}: " val2
-        echo
+        printf "%s: " "${prompt_text}" >&2
+        read -r -s val1
+        printf '\n' >&2
+
+        printf "Confirm %s: " "${prompt_text}" >&2
+        read -r -s val2
+        printf '\n' >&2
+
+        # Strip accidental CR/LF characters
+        val1="${val1//$'\r'/}"
+        val1="${val1//$'\n'/}"
+        val2="${val2//$'\r'/}"
+        val2="${val2//$'\n'/}"
 
         if [[ "${val1}" != "${val2}" ]]; then
-            echo "Values did not match. Try again."
+            echo "Values did not match. Try again." >&2
             continue
         fi
 
-        [[ -z "${val1}" ]] && echo "Value cannot be empty." && continue
+        if [[ -z "${val1}" ]]; then
+            echo "Value cannot be empty." >&2
+            continue
+        fi
 
-        printf '%s' "${val1}"
+        printf -v "${__resultvar}" '%s' "${val1}"
         return 0
     done
 }
 
 prompt_value() {
-    local prompt_text="$1"
+    local __resultvar="$1"
+    local prompt_text="$2"
     local val=""
 
     while true; do
         read -r -p "${prompt_text}: " val
-        [[ -z "${val}" ]] && echo "Value cannot be empty." && continue
-        printf '%s' "${val}"
+
+        # Strip accidental CR/LF characters
+        val="${val//$'\r'/}"
+        val="${val//$'\n'/}"
+
+        if [[ -z "${val}" ]]; then
+            echo "Value cannot be empty."
+            continue
+        fi
+
+        printf -v "${__resultvar}" '%s' "${val}"
         return 0
     done
 }
@@ -188,9 +211,9 @@ prompt_value() {
 echo
 echo "Setting up local iosxe credentials..."
 
-DEVICE_USERNAME="$(prompt_value "Device username")"
-DEVICE_PASSWORD="$(prompt_secret "Device login password")"
-ENABLE_PASSWORD="$(prompt_secret "Device enable password")"
+prompt_value DEVICE_USERNAME "Device username"
+prompt_secret DEVICE_PASSWORD "Device login password"
+prompt_secret ENABLE_PASSWORD "Device enable password"
 
 if confirm_overwrite "${IOSXE_VARS_FILE}"; then
     cat > "${IOSXE_VARS_FILE}" <<EOF
