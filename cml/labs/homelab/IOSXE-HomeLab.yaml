@@ -551,6 +551,104 @@ nodes:
                     traceroute
 
                 ###############################################################
+                # Install Docker Engine
+                #
+                # Purpose:
+                # - Install Docker from Docker's official Ubuntu repository
+                # - Allow the cisco user to run docker commands without sudo
+                #
+                # Placement:
+                # - Run after base packages are installed
+                # - Run before repo clone / venv setup in case future tooling
+                #   depends on Docker being available
+                #
+                # Important:
+                # - newgrp docker is intentionally NOT used here because bootstrap
+                #   runs non-interactively as a service
+                # - The docker group membership applies after the cisco user starts
+                #   a new login session
+                ###############################################################
+
+                echo "Installing Docker Engine..."
+
+                install -m 0755 -d /etc/apt/keyrings
+
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+                  -o /etc/apt/keyrings/docker.asc
+
+                chmod a+r /etc/apt/keyrings/docker.asc
+
+                cat > /etc/apt/sources.list.d/docker.sources <<EOF
+                Types: deb
+                URIs: https://download.docker.com/linux/ubuntu
+                Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+                Components: stable
+                Architectures: $(dpkg --print-architecture)
+                Signed-By: /etc/apt/keyrings/docker.asc
+                EOF
+
+                for i in 1 2 3; do
+                  apt-get update -y && break
+                  echo "apt-get update failed after adding Docker repo, retrying in 10 seconds..."
+                  sleep 10
+                done
+
+                apt-get install -y --fix-missing \
+                  docker-ce \
+                  docker-ce-cli \
+                  containerd.io \
+                  docker-buildx-plugin \
+                  docker-compose-plugin
+
+                echo "Adding cisco user to docker group..."
+                usermod -aG docker cisco
+                echo "NOTE: Docker group membership for 'cisco' will apply on next login session."
+
+                echo "Enabling and starting Docker service..."
+                systemctl enable docker
+                systemctl start docker
+
+                echo "Docker installation complete."
+
+                ###############################################################
+                # Validate Docker installation
+                #
+                # Purpose:
+                # - Confirm Docker service is installed and running
+                # - Confirm the cisco user has docker group membership configured
+                #
+                # Note:
+                # - We do NOT run `docker` as cisco here because group membership
+                #   may not apply until the next login session.
+                ###############################################################
+
+                echo "Validating Docker installation..."
+
+                if ! systemctl is-active --quiet docker; then
+                    echo "Bootstrap failed: Docker service is not running."
+                    echo "BOOTSTRAP_STATE=failed_docker_service" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                if ! docker version >/dev/null 2>&1; then
+                    echo "Bootstrap failed: Docker CLI cannot communicate with Docker daemon."
+                    echo "BOOTSTRAP_STATE=failed_docker_cli" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                if ! id -nG cisco | grep -qw docker; then
+                    echo "Bootstrap failed: cisco user is not in the docker group."
+                    echo "BOOTSTRAP_STATE=failed_docker_group" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                echo "Docker validation passed."
+                echo "NOTE: cisco may need a new login session before running docker without sudo."
+
+                ###############################################################
                 # Configure Ansible vault password helper
                 #
                 # Purpose:
@@ -712,20 +810,21 @@ nodes:
                 cat >/etc/motd <<'EOF'
                 Automation host is ready.
 
-                Useful commands:
-                  bootstrap-status   Show bootstrap status and recent log lines
-                  labenv             Enter /opt/labrepo with the Python venv activated
+                Core commands:
+                  bootstrap-status   Show bootstrap status and logs
+                  labenv             Enter lab environment (venv activated)
 
-                Runtime note:
-                  Ansible vault decryption now uses:
-                    /home/cisco/.ansible/get_vault_pass.sh
+                Validation:
+                  docker version     Check Docker daemon connectivity
+                  docker ps          Verify Docker access (no sudo)
+                  ansible --version  Verify Ansible environment
 
-                  Before running Ansible, export:
-                    ANSIBLE_VAULT_PASSWORD='your-vault-password'
+                Notes:
+                  Docker group membership applies after login
+                  Export ANSIBLE_VAULT_PASSWORD before running Ansible
 
-                Log files:
+                Logs:
                   /var/log/automation-bootstrap.log
-                  /var/log/automation-bootstrap.status
                 EOF
 
                 echo "Bootstrap complete."
