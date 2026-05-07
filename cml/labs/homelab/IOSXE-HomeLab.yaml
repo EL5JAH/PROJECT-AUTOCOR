@@ -807,13 +807,6 @@ nodes:
                 fi
 
                 echo "Creating helper commands..."
-                cat >/usr/local/bin/labenv <<'EOF'
-                #!/usr/bin/env bash
-                cd /opt/labrepo
-                source .venv/bin/activate
-                exec bash
-                EOF
-                chmod +x /usr/local/bin/labenv
 
                 cat >/usr/local/bin/bootstrap-status <<'EOF'
                 #!/usr/bin/env bash
@@ -830,26 +823,134 @@ nodes:
                 echo "BOOTSTRAP_STATE=completed" > "$STATUS_FILE"
                 echo "BOOTSTRAP_COMPLETED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
 
+                sudo tee /etc/profile.d/labenv.sh >/dev/null <<'EOF'
+                # ============================================================
+                # Lab Environment Functions
+                # ============================================================
+
+                enter-lab() {
+
+                  # Prevent root usage
+                  if [[ "$EUID" -eq 0 ]]; then
+                    echo "❌ Do not run enter-lab as root."
+                    echo "👉 Use the cisco user instead."
+                    return 1
+                  fi
+
+                  local LAB_DIR="/opt/labrepo"
+
+                  # Validate repo path
+                  if [[ ! -d "$LAB_DIR" ]]; then
+                    echo "❌ Lab directory not found:"
+                    echo "   $LAB_DIR"
+                    return 1
+                  fi
+
+                  cd "$LAB_DIR" || {
+                    echo "❌ Failed to enter $LAB_DIR"
+                    return 1
+                  }
+
+                  # Validate venv exists
+                  if [[ ! -f ".venv/bin/activate" ]]; then
+                    echo "❌ Virtual environment missing:"
+                    echo "   $LAB_DIR/.venv"
+                    return 1
+                  fi
+
+                  # Activate venv
+                  source .venv/bin/activate
+
+                  # Detect git branch
+                  local BRANCH="no-git"
+
+                  if command -v git &>/dev/null &&
+                    git rev-parse --is-inside-work-tree &>/dev/null; then
+
+                    BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+                  fi
+
+                  # Custom prompt
+                  export LAB_ENV_NAME="labenv:${BRANCH}"
+                  export PS1="(${LAB_ENV_NAME}) \u@\h:\w\$ "
+
+                  echo "✅ Lab environment activated"
+                  echo "   Env: $LAB_ENV_NAME"
+                  echo "   Python: $(which python)"
+                  echo "   Ansible: $(which ansible)"
+
+                  # Docker permission validation
+                  if docker ps &>/dev/null; then
+                    echo "   Docker: ✅ access OK"
+                  else
+                    echo "   Docker: ❌ permission issue"
+                    echo "   👉 Ensure user is in docker group"
+                  fi
+
+                  echo ""
+                  echo "👉 Available commands:"
+                  echo "   lab help"
+                  echo "   lab check"
+                  echo "   exit-lab"
+                }
+
+                # ============================================================
+                # Exit lab environment
+                # ============================================================
+
+                exit-lab() {
+
+                  deactivate 2>/dev/null || true
+
+                  unset LAB_ENV_NAME
+
+                  export PS1="\u@\h:\w\$ "
+
+                  cd ~ || return 1
+
+                  echo "Exited lab environment"
+                }
+                EOF
+
                 cat >/etc/motd <<'EOF'
-                Automation host is ready.
+                ============================================================
+                      PROJECT AUTOCOR - Automation Host
+                ============================================================
 
-                Core commands:
-                  bootstrap-status   Show bootstrap status and logs
-                  labenv             Enter lab environment (venv activated)
+                Lab Environment
+                ------------------------------
+                  enter-lab              Activate lab environment
+                  exit-lab               Exit lab environment
 
-                Validation:
-                  docker version     Check Docker daemon connectivity
-                  docker ps          Verify Docker access (no sudo)
-                  validate-gitlab-lab     Validate GitLab container, web access, SSH port, and lab SSH key
-                  docker logs gitlab      View GitLab startup logs
-                  ansible --version  Verify Ansible environment
+                Platform Operations
+                ------------------------------
+                  lab help               Show available lab commands
+                  lab check              Validate environment health
+                  lab run <playbook>     Run Ansible playbook
+                  lab logs               Show recent automation runs
+                  lab last               Show latest run directory
 
-                Notes:
-                  Docker group membership applies after login
-                  Export ANSIBLE_VAULT_PASSWORD before running Ansible
+                Validation
+                ------------------------------
+                  docker version         Check Docker daemon connectivity
+                  docker ps              Verify Docker access (no sudo)
+                  validate-gitlab-lab    Validate GitLab container, web access,
+                                          SSH port, and lab SSH key
+                  docker logs gitlab     View GitLab startup logs
+                  ansible --version      Verify Ansible environment
 
-                Logs:
-                  /var/log/automation-bootstrap.log
+                Bootstrap / Recovery
+                ------------------------------
+                  bootstrap-status       View bootstrap logs and status
+
+                Environment Notes
+                ------------------------------
+                  - Use enter-lab before running automation commands
+                  - Docker runs without sudo for cisco user
+                  - Artifacts stored under:
+                      /opt/labrepo/artifacts/
+
+                ============================================================
                 EOF
 
                 echo "Bootstrap complete."

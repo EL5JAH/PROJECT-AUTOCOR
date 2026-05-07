@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - Operator environment UX and validation helpers - 2026-05-07
+
+### Added
+
+- Added `/etc/profile.d/labenv.sh` to provide shell-function based `enter-lab` and `exit-lab` helpers
+- Added visible lab prompt format showing active environment and Git branch, such as `(labenv:<branch>)`
+- Added root-user guardrails to prevent activating the lab environment as `root`
+- Added Docker access visibility during lab environment activation
+- Added `lab-check` helper for validating Python, Ansible, Docker, Docker permissions, and Ansible functionality
+- Added `lab` CLI entrypoint with `help`, `check`, `run`, `logs`, and `last` operations
+- Added MOTD guidance for lab environment usage, platform operations, validation commands, and bootstrap recovery
+
+### Changed
+
+- Replaced executable `enter-lab` and `exit-lab` scripts with shell functions so virtual environment activation persists in the current shell
+- Updated operator workflow to use `enter-lab`, `lab check`, `lab run`, `lab logs`, and `exit-lab`
+- Improved failure messaging for missing playbooks, missing virtual environment, Docker permission issues, and unavailable automation tools
+
+### Removed
+
+- Removed standalone `/usr/local/bin/enter-lab` and `/usr/local/bin/exit-lab` executable helpers because they cannot persist virtual environment activation in the parent shell
+
 ## [0.7.0] - Portable GitLab CE DevOps lab integration - 2026-05-06
 
 ### Added
