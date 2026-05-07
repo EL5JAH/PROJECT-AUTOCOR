@@ -158,6 +158,29 @@ echo "Docker validation passed."
 echo "NOTE: cisco may need a new login session before running docker without sudo."
 
 ###############################################################
+# Configure GitLab CE Portable DevOps Lab
+#
+# Purpose:
+# - Deploy GitLab CE using Docker Compose
+# - Configure GitLab web and SSH access
+# - Generate local GitLab SSH authentication keys
+# - Prepare validation helpers for lab users
+#
+# Note:
+# - Initial GitLab startup may take several minutes
+#   while internal services initialize.
+###############################################################
+
+chmod +x /opt/labrepo/scripts/setup_gitlab_container.sh
+chmod +x /opt/labrepo/scripts/setup_gitlab_ssh.sh
+chmod +x /opt/labrepo/scripts/validate_gitlab_lab.sh
+
+/opt/labrepo/scripts/setup_gitlab_container.sh
+/opt/labrepo/scripts/setup_gitlab_ssh.sh
+
+ln -sf /opt/labrepo/scripts/validate_gitlab_lab.sh /usr/local/bin/validate-gitlab-lab
+
+###############################################################
 # Configure Ansible vault password helper
 #
 # Purpose:
@@ -293,13 +316,6 @@ if [[ -d "${REPO_DIR}/scripts" ]]; then
 fi
 
 echo "Creating helper commands..."
-cat >/usr/local/bin/labenv <<'EOF'
-#!/usr/bin/env bash
-cd /opt/labrepo
-source .venv/bin/activate
-exec bash
-EOF
-chmod +x /usr/local/bin/labenv
 
 cat >/usr/local/bin/bootstrap-status <<'EOF'
 #!/usr/bin/env bash
@@ -326,6 +342,8 @@ Core commands:
 Validation:
   docker version     Check Docker daemon connectivity
   docker ps          Verify Docker access (no sudo)
+  validate-gitlab-lab     Validate GitLab container, web access, SSH port, and lab SSH key
+  docker logs gitlab      View GitLab startup logs
   ansible --version  Verify Ansible environment
 
 Notes:

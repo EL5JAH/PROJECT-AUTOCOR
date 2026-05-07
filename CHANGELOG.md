@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - Portable GitLab CE DevOps lab integration - 2026-05-06
+
+### Added
+
+- Added self-hosted GitLab CE deployment using Docker Compose
+- Added automated GitLab container provisioning during automation-host bootstrap
+- Added persistent GitLab data, config, and log volume configuration under `/srv/gitlab`
+- Added GitLab web service exposure on port `8080`
+- Added GitLab SSH service exposure on port `2222`
+- Added automated lab SSH key generation for GitLab authentication
+- Added GitLab SSH client configuration and known_hosts registration
+- Added GitLab validation helper script for container, web, SSH, and key verification
+- Added bootstrap integration for GitLab setup and validation helper installation
+- Added portable DevOps lab MOTD guidance and validation commands
+
+### Changed
+
+- Expanded automation-host bootstrap to support portable DevOps lab provisioning workflows
+- Extended Docker-based lab architecture to support self-hosted CI/CD platform services
+
+## [0.6.0] - Docker integration and automation-host runtime validation hardening - 2026-04-26
+
+### Added
+
+- Added Docker Engine installation during automation-host bootstrap using Docker’s official Ubuntu repository
+- Added Docker GPG key and apt source configuration for managed Docker package installation
+- Added automatic Docker service enable/start handling during bootstrap
+- Added automatic `cisco` user membership in the `docker` group for non-sudo Docker usage
+- Added Docker post-install validation for:
+  - Docker service state
+  - Docker daemon connectivity
+  - `cisco` docker group membership
+- Added MOTD runtime guidance for validating Docker access and daemon connectivity after login
+
 ## [0.5.1] - Fix credential prompt handling for reliable secret input - 2026-04-17
 
 ### Fixed
