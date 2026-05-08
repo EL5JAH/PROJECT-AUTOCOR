@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.2] - Bootstrap Workflow Refactor and Repository Validation Hardening - 2026-05-08
+
+### Changed
+
+- Reordered bootstrap workflow to clone and validate the automation repository before invoking repo-based scripts
+- Added centralized repository validation for `.git`, `scripts/`, and `requirements.txt`
+- Added explicit Git branch checkout validation during bootstrap
+- Added automatic execute permission handling for repo shell scripts
+- Improved bootstrap failure handling with persistent status tracking for repo and GitLab validation failures
+- Reorganized bootstrap sections with standardized operational banners and helper summaries
+- Moved Python virtual environment creation and dependency installation ahead of Docker and GitLab provisioning
+- Added validation for required GitLab helper scripts before execution
+- Added bootstrap prerequisite validation for the `cisco` user
+- Improved helper command and MOTD documentation for operational usability
+
+### Fixed
+
+- Fixed bootstrap failures caused by GitLab setup executing before repository clone completion
+- Fixed ambiguous chmod failures by validating required script paths before execution
+- Fixed stale Docker placement documentation after bootstrap workflow restructuring
+
 ## [0.7.1] - Operator environment UX and validation helpers - 2026-05-07
 
 ### Added

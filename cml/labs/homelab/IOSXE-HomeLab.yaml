@@ -492,11 +492,34 @@ nodes:
                 #!/usr/bin/env bash
                 set -euo pipefail
 
+                ###############################################################
+                # Initialize bootstrap environment
+                #
+                # Purpose:
+                # - Configure bootstrap runtime variables and logging
+                # - Initialize persistent bootstrap status tracking
+                # - Prevent repeated bootstrap execution after success
+                # - Validate required bootstrap prerequisites
+                #
+                # Components:
+                # - Bootstrap log file
+                # - Bootstrap status file
+                # - Bootstrap completion marker
+                # - Repository configuration variables
+                # - Required user validation
+                #
+                # Important:
+                # - bootstrap.sh runs as a systemd service during first boot
+                # - All stdout/stderr is redirected into the bootstrap log
+                # - set -euo pipefail is enabled for strict error handling
+                ###############################################################
+
                 LOG_FILE="/var/log/automation-bootstrap.log"
                 STATUS_FILE="/var/log/automation-bootstrap.status"
                 MARKER_FILE="/opt/bootstrap/.bootstrapped"
                 REPO_DIR="/opt/labrepo"
                 REPO_URL="https://github.com/EL5JAH/PROJECT-AUTOCOR.git"
+                REPO_BRANCH="test-baseline_validate"
                 BOOT_DELAY_SECONDS=180
 
                 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -512,6 +535,13 @@ nodes:
                 fi
 
                 export DEBIAN_FRONTEND=noninteractive
+
+                if ! id cisco >/dev/null 2>&1; then
+                    echo "Bootstrap failed: cisco user does not exist."
+                    echo "BOOTSTRAP_STATE=failed_missing_cisco_user" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
 
                 echo "Waiting ${BOOT_DELAY_SECONDS}s to allow lab devices to finish booting..."
                 sleep "${BOOT_DELAY_SECONDS}"
@@ -551,6 +581,208 @@ nodes:
                     traceroute
 
                 ###############################################################
+                # Configure Ansible vault password helper
+                #
+                # Purpose:
+                # - Create the cisco user's .ansible directory
+                # - Install an executable helper script that Ansible can call
+                #   whenever it needs the vault password
+                #
+                # Why this change was made:
+                # - The previous design expected a plaintext vault password file
+                #   at ~/.ansible/.vault_pass.txt
+                # - Fresh builds failed because that file did not exist
+                # - This new design avoids storing a permanent plaintext password
+                #   file on disk
+                #
+                # How this works:
+                # - ansible.cfg points vault_password_file to:
+                #     /home/cisco/.ansible/get_vault_pass.sh
+                # - When Ansible needs the vault password, it executes that script
+                # - The script reads the password from the environment variable:
+                #     ANSIBLE_VAULT_PASSWORD
+                #
+                # Important:
+                # - This block does NOT hardcode the password
+                # - This block does NOT print the password
+                # - The password must be supplied externally at runtime
+                ###############################################################
+
+                echo "Configuring Ansible vault password helper..."
+
+                CISCO_USER="cisco"
+                CISCO_HOME="/home/${CISCO_USER}"
+                ANSIBLE_DIR="${CISCO_HOME}/.ansible"
+                VAULT_HELPER="${ANSIBLE_DIR}/get_vault_pass.sh"
+
+                # Create the .ansible directory with secure permissions.
+                # 700 means only the owner can access the directory.
+                # install is used instead of mkdir/chown/chmod separately so the
+                # directory is created with the intended ownership and mode in one step.
+                install -d -m 700 -o "${CISCO_USER}" -g "${CISCO_USER}" "${ANSIBLE_DIR}"
+
+                # Create the vault helper script that Ansible will execute.
+                #
+                # Important behavior:
+                # - The script must print ONLY the vault password to stdout
+                # - The script must not print debug/status text to stdout
+                # - The script fails immediately if ANSIBLE_VAULT_PASSWORD is unset
+                cat > "${VAULT_HELPER}" <<'EOF'
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                ###############################################################
+                # get_vault_pass.sh
+                #
+                # Purpose:
+                # - Provide the Ansible Vault password at runtime
+                # - Avoid storing the vault password in the repo
+                # - Avoid using a permanent plaintext password file
+                #
+                # How it works:
+                # - Ansible executes this script because ansible.cfg points
+                #   vault_password_file to this path
+                # - The script reads the password from:
+                #     ANSIBLE_VAULT_PASSWORD
+                # - The script prints ONLY the password to stdout
+                #
+                # Important:
+                # - Do not add debug echo statements here
+                # - Do not hardcode the password here
+                # - Do not print anything except the password
+                ###############################################################
+
+                # Fail immediately if the required environment variable is not set.
+                : "${ANSIBLE_VAULT_PASSWORD:?ANSIBLE_VAULT_PASSWORD is not set}"
+
+                # Print only the vault password for Ansible to consume.
+                printf '%s\n' "${ANSIBLE_VAULT_PASSWORD}"
+                EOF
+
+                # Ensure the helper script is owned by the cisco user even if
+                # bootstrap.sh is running as root.
+                chown "${CISCO_USER}:${CISCO_USER}" "${VAULT_HELPER}"
+
+                # 700 means only the owner can read/write/execute the helper.
+                chmod 700 "${VAULT_HELPER}"
+
+                # Validate that the helper script now exists.
+                if [[ ! -f "${VAULT_HELPER}" ]]; then
+                    echo "Bootstrap failed: vault helper script was not created."
+                    echo "BOOTSTRAP_STATE=failed_vault_helper" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                echo "Ansible vault password helper created successfully."
+
+                ###############################################################
+                # Clone automation repository
+                #
+                # Purpose:
+                # - Prepare /opt/labrepo before any repo-based scripts run
+                # - Ensure bootstrap has access to scripts, requirements, and lab files
+                # - Clone as the cisco user so repo ownership is correct
+                ###############################################################
+
+                mkdir -p /opt/bootstrap
+                mkdir -p /opt
+                chown cisco:cisco /opt      # Give cisco ownership so it can create labrepo
+
+                echo "Preparing repo directory..."
+
+                if [[ -d "${REPO_DIR}" ]]; then
+                    echo "Removing existing repo directory..."
+                    rm -rf "${REPO_DIR}"
+                fi
+
+                echo "Cloning repo from ${REPO_URL} ..."
+                if ! sudo -u cisco git clone "${REPO_URL}" "${REPO_DIR}"; then
+                    echo "Bootstrap failed: git clone failed."
+                    echo "BOOTSTRAP_STATE=failed_git_clone" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                ###############################################################
+                # Validate automation repository
+                #
+                # Purpose:
+                # - Fail early if the repository did not clone correctly
+                # - Confirm required repo directories exist before later stages
+                # - Check out the target bootstrap branch
+                # - Ensure required bootstrap files are present
+                ###############################################################
+
+                if [[ ! -d "${REPO_DIR}/.git" ]]; then
+                    echo "Bootstrap failed: repository missing or invalid: ${REPO_DIR}"
+                    echo "BOOTSTRAP_STATE=failed_repo_missing" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                cd "${REPO_DIR}"
+
+                echo "Checking out repository branch: ${REPO_BRANCH}"
+                if ! sudo -u cisco git checkout "${REPO_BRANCH}"; then
+                    echo "Bootstrap failed: unable to checkout branch ${REPO_BRANCH}."
+                    echo "BOOTSTRAP_STATE=failed_git_checkout" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                sudo -u cisco git status
+
+                if [[ ! -d "${REPO_DIR}/scripts" ]]; then
+                    echo "Bootstrap failed: repository scripts directory missing: ${REPO_DIR}/scripts"
+                    echo "BOOTSTRAP_STATE=failed_repo_scripts_missing" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                if [[ ! -f "${REPO_DIR}/requirements.txt" ]]; then
+                    echo "Bootstrap failed: requirements.txt missing: ${REPO_DIR}/requirements.txt"
+                    echo "BOOTSTRAP_STATE=failed_requirements_missing" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                fi
+
+                ###############################################################
+                # Set repository script permissions
+                #
+                # Purpose:
+                # - Ensure repo shell scripts are executable after clone
+                # - Prevent manual chmod steps after bootstrap
+                # - Prepare repo scripts for later bootstrap stages
+                #
+                # Scope:
+                # - Applies execute permissions to all .sh files under:
+                #     /opt/labrepo/scripts
+                ###############################################################
+
+                echo "Setting execute permissions on repo scripts..."
+                find "${REPO_DIR}/scripts" -type f -name "*.sh" -exec chmod 755 {} \;
+
+                ###############################################################
+                # Create Python virtual environment
+                #
+                # Purpose:
+                # - Create an isolated Python environment for automation tooling
+                # - Install repo-defined Python dependencies from requirements.txt
+                # - Keep lab automation dependencies separate from system Python
+                ###############################################################
+
+                echo "Creating Python virtual environment..."
+                sudo -u cisco python3 -m venv .venv
+
+                echo "Installing Python requirements..."
+                sudo -u cisco bash -c "
+                cd '${REPO_DIR}' &&
+                source .venv/bin/activate &&
+                pip install --upgrade pip &&
+                pip install -r requirements.txt"
+
+                ###############################################################
                 # Install Docker Engine
                 #
                 # Purpose:
@@ -559,8 +791,8 @@ nodes:
                 #
                 # Placement:
                 # - Run after base packages are installed
-                # - Run before repo clone / venv setup in case future tooling
-                #   depends on Docker being available
+                # - Run after repo clone / venv setup
+                # - Run before GitLab setup because GitLab depends on Docker
                 #
                 # Important:
                 # - newgrp docker is intentionally NOT used here because bootstrap
@@ -662,151 +894,60 @@ nodes:
                 #   while internal services initialize.
                 ###############################################################
 
-                chmod +x /opt/labrepo/scripts/setup_gitlab_container.sh
-                chmod +x /opt/labrepo/scripts/setup_gitlab_ssh.sh
-                chmod +x /opt/labrepo/scripts/validate_gitlab_lab.sh
+                GITLAB_SCRIPTS=(
+                  "/opt/labrepo/scripts/setup_gitlab_container.sh"
+                  "/opt/labrepo/scripts/setup_gitlab_ssh.sh"
+                  "/opt/labrepo/scripts/validate_gitlab_lab.sh"
+                )
 
+                echo "Validating GitLab helper scripts..."
+
+                for script in "${GITLAB_SCRIPTS[@]}"; do
+                  if [[ ! -f "$script" ]]; then
+                    echo "Bootstrap failed: Required GitLab helper script missing: $script"
+                    echo "BOOTSTRAP_STATE=failed_gitlab_script_missing" > "$STATUS_FILE"
+                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                    exit 1
+                  fi
+                done
+
+                chmod +x "${GITLAB_SCRIPTS[@]}"
+
+                echo "Running GitLab container setup..."
                 /opt/labrepo/scripts/setup_gitlab_container.sh
+
+                echo "Running GitLab SSH setup..."
                 /opt/labrepo/scripts/setup_gitlab_ssh.sh
 
                 ln -sf /opt/labrepo/scripts/validate_gitlab_lab.sh /usr/local/bin/validate-gitlab-lab
 
+                echo "GitLab portable DevOps lab setup complete."
+
                 ###############################################################
-                # Configure Ansible vault password helper
+                # Create Helper Commands and User Environment Utilities
                 #
                 # Purpose:
-                # - Create the cisco user's .ansible directory
-                # - Install an executable helper script that Ansible can call
-                #   whenever it needs the vault password
+                # - Install operational helper commands for troubleshooting
+                # - Provide a reusable lab environment activation workflow
+                # - Improve usability for repeatable automation tasks
+                # - Configure persistent shell functions for the cisco user
                 #
-                # Why this change was made:
-                # - The previous design expected a plaintext vault password file
-                #   at ~/.ansible/.vault_pass.txt
-                # - Fresh builds failed because that file did not exist
-                # - This new design avoids storing a permanent plaintext password
-                #   file on disk
-                #
-                # How this works:
-                # - ansible.cfg points vault_password_file to:
-                #     /home/cisco/.ansible/get_vault_pass.sh
-                # - When Ansible needs the vault password, it executes that script
-                # - The script reads the password from the environment variable:
-                #     ANSIBLE_VAULT_PASSWORD
-                #
-                # Important:
-                # - This block does NOT hardcode the password
-                # - This block does NOT print the password
-                # - The password must be supplied externally at runtime
+                # Components:
+                # - bootstrap-status : View bootstrap logs and status
+                # - enter-lab        : Activate the PROJECT AUTOCOR lab environment
+                # - exit-lab         : Exit the active lab environment
+                # - /etc/motd        : Display platform usage guidance on login
                 ###############################################################
-
-                echo "Configuring Ansible vault password helper..."
-
-                CISCO_USER="cisco"
-                CISCO_HOME="/home/${CISCO_USER}"
-                ANSIBLE_DIR="${CISCO_HOME}/.ansible"
-                VAULT_HELPER="${ANSIBLE_DIR}/get_vault_pass.sh"
-
-                # Create the .ansible directory with secure permissions.
-                # 700 means only the owner can access the directory.
-                # install is used instead of mkdir/chown/chmod separately so the
-                # directory is created with the intended ownership and mode in one step.
-                install -d -m 700 -o "${CISCO_USER}" -g "${CISCO_USER}" "${ANSIBLE_DIR}"
-
-                # Create the vault helper script that Ansible will execute.
-                #
-                # Important behavior:
-                # - The script must print ONLY the vault password to stdout
-                # - The script must not print debug/status text to stdout
-                # - The script fails immediately if ANSIBLE_VAULT_PASSWORD is unset
-                cat > "${VAULT_HELPER}" <<'EOF'
-                #!/usr/bin/env bash
-                set -euo pipefail
-
-                ###############################################################
-                # get_vault_pass.sh
-                #
-                # Purpose:
-                # - Provide the Ansible Vault password at runtime
-                # - Avoid storing the vault password in the repo
-                # - Avoid using a permanent plaintext password file
-                #
-                # How it works:
-                # - Ansible executes this script because ansible.cfg points
-                #   vault_password_file to this path
-                # - The script reads the password from:
-                #     ANSIBLE_VAULT_PASSWORD
-                # - The script prints ONLY the password to stdout
-                #
-                # Important:
-                # - Do not add debug echo statements here
-                # - Do not hardcode the password here
-                # - Do not print anything except the password
-                ###############################################################
-
-                # Fail immediately if the required environment variable is not set.
-                : "${ANSIBLE_VAULT_PASSWORD:?ANSIBLE_VAULT_PASSWORD is not set}"
-
-                # Print only the vault password for Ansible to consume.
-                printf '%s\n' "${ANSIBLE_VAULT_PASSWORD}"
-                EOF
-
-                # Ensure the helper script is owned by the cisco user even if
-                # bootstrap.sh is running as root.
-                chown "${CISCO_USER}:${CISCO_USER}" "${VAULT_HELPER}"
-
-                # 700 means only the owner can read/write/execute the helper.
-                chmod 700 "${VAULT_HELPER}"
-
-                # Validate that the helper script now exists.
-                if [[ ! -f "${VAULT_HELPER}" ]]; then
-                    echo "Bootstrap failed: vault helper script was not created."
-                    echo "BOOTSTRAP_STATE=failed_vault_helper" > "$STATUS_FILE"
-                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
-                    exit 1
-                fi
-
-                echo "Ansible vault password helper created successfully."
-
-                mkdir -p /opt/bootstrap
-                mkdir -p /opt
-                chown cisco:cisco /opt      # Give cisco ownership so it can create labrepo
-
-                echo "Preparing repo directory..."
-
-                if [[ -d "${REPO_DIR}" ]]; then
-                    echo "Removing existing repo directory..."
-                    rm -rf "${REPO_DIR}"
-                fi
-
-                echo "Cloning repo from ${REPO_URL} ..."
-                if ! sudo -u cisco git clone "${REPO_URL}" "${REPO_DIR}"; then
-                    echo "Bootstrap failed: git clone failed."
-                    echo "BOOTSTRAP_STATE=failed_git_clone" > "$STATUS_FILE"
-                    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
-                    exit 1
-                fi
-
-                cd "${REPO_DIR}"
-                sudo -u cisco git checkout test-baseline_validate
-                sudo -u cisco git status
-
-                echo "Creating Python virtual environment..."
-                sudo -u cisco python3 -m venv .venv
-
-                echo "Installing Python requirements..."
-                sudo -u cisco bash -c "
-                source .venv/bin/activate &&
-                pip install --upgrade pip &&
-                pip install -r requirements.txt"
-
-                # Ensure repo scripts are executable by the owner/group/others as appropriate.
-                # This prevents needing to manually chmod scripts after bootstrap.
-                if [[ -d "${REPO_DIR}/scripts" ]]; then
-                    echo "Setting execute permissions on repo scripts..."
-                    find "${REPO_DIR}/scripts" -type f -name "*.sh" -exec chmod 755 {} \;
-                fi
 
                 echo "Creating helper commands..."
+
+                ###############################################################
+                # Create bootstrap-status helper
+                #
+                # Purpose:
+                # - Provide quick visibility into bootstrap state
+                # - Show recent bootstrap log output for troubleshooting
+                ###############################################################
 
                 cat >/usr/local/bin/bootstrap-status <<'EOF'
                 #!/usr/bin/env bash
@@ -818,10 +959,23 @@ nodes:
                 EOF
                 chmod +x /usr/local/bin/bootstrap-status
 
-                touch "${MARKER_FILE}"
-
-                echo "BOOTSTRAP_STATE=completed" > "$STATUS_FILE"
-                echo "BOOTSTRAP_COMPLETED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+                ###############################################################
+                # Create persistent lab environment shell functions
+                #
+                # Purpose:
+                # - Allow users to quickly enter the automation workspace
+                # - Automatically activate the Python virtual environment
+                # - Provide a custom shell prompt for lab sessions
+                # - Validate Docker access and repo availability
+                #
+                # Location:
+                # - /etc/profile.d/labenv.sh
+                #
+                # Behavior:
+                # - Functions automatically become available on login
+                # - enter-lab activates the environment
+                # - exit-lab restores the default shell state
+                ###############################################################
 
                 sudo tee /etc/profile.d/labenv.sh >/dev/null <<'EOF'
                 # ============================================================
@@ -912,6 +1066,17 @@ nodes:
                 }
                 EOF
 
+                chmod 644 /etc/profile.d/labenv.sh
+
+                ###############################################################
+                # Configure login MOTD
+                #
+                # Purpose:
+                # - Display operational guidance after login
+                # - Provide quick-reference platform commands
+                # - Improve usability for new lab users
+                ###############################################################
+
                 cat >/etc/motd <<'EOF'
                 ============================================================
                       PROJECT AUTOCOR - Automation Host
@@ -952,6 +1117,20 @@ nodes:
 
                 ============================================================
                 EOF
+
+                ###############################################################
+                # Finalize bootstrap state
+                #
+                # Purpose:
+                # - Mark bootstrap completion
+                # - Persist successful bootstrap state
+                # - Prevent bootstrap reruns on future boots
+                ###############################################################
+
+                touch "${MARKER_FILE}"
+
+                echo "BOOTSTRAP_STATE=completed" > "$STATUS_FILE"
+                echo "BOOTSTRAP_COMPLETED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
 
                 echo "Bootstrap complete."
 
