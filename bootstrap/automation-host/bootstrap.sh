@@ -34,6 +34,18 @@ BOOTSTRAP_START_EPOCH=$(date +%s)
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+section_start() {
+  echo
+  echo "============================================================"
+  echo "$1"
+  echo "============================================================"
+}
+
+section_end() {
+  echo
+  echo "Completed: $1"
+}
+
 echo "BOOTSTRAP_STATE=starting" > "$STATUS_FILE"
 echo "BOOTSTRAP_STARTED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
 
@@ -45,6 +57,39 @@ if [[ -f "$MARKER_FILE" ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+
+###############################################################
+# Load bootstrap configuration
+#
+# Purpose:
+# - Allow user customization before bootstrap execution
+# - Support portable GitLab/GitHub remote configuration
+# - Allow optional local GitLab CE deployment
+# - Provide reusable bootstrap customization entrypoint
+#
+# Config File:
+# - /opt/bootstrap/bootstrap.env
+#
+# Supported Variables:
+# - INSTALL_GITLAB
+# - GIT_REMOTE_URL
+#
+# Important:
+# - Values loaded here override bootstrap defaults
+# - Missing config file is non-fatal
+###############################################################
+
+BOOTSTRAP_CONFIG="/opt/bootstrap/bootstrap.env"
+
+if [[ -f "${BOOTSTRAP_CONFIG}" ]]; then
+    echo "Loading bootstrap configuration: ${BOOTSTRAP_CONFIG}"
+
+    # shellcheck disable=SC1090
+    source "${BOOTSTRAP_CONFIG}"
+else
+    echo "No bootstrap configuration file found."
+    echo "Using built-in bootstrap defaults."
+fi
 
 if ! id cisco >/dev/null 2>&1; then
     echo "Bootstrap failed: cisco user does not exist."
@@ -532,47 +577,85 @@ echo "Docker validation passed."
 echo "NOTE: cisco may need a new login session before running docker without sudo."
 
 ###############################################################
-# Configure GitLab CE Portable DevOps Lab
+# Configure Git platform mode
 #
 # Purpose:
-# - Deploy GitLab CE using Docker Compose
-# - Configure GitLab web and SSH access
-# - Generate local GitLab SSH authentication keys
-# - Prepare validation helpers for lab users
+# - Use GitLab.com by default for faster bootstrap builds
+# - Avoid pulling/initializing the large local GitLab CE container
+# - Optionally deploy a portable self-hosted GitLab CE lab
 #
-# Note:
-# - Initial GitLab startup may take several minutes
-#   while internal services initialize.
+# Modes:
+# - INSTALL_GITLAB=false  Use GitLab.com/GitHub remote workflow
+# - INSTALL_GITLAB=true   Install local GitLab CE Docker lab
 ###############################################################
 
-GITLAB_SCRIPTS=(
-  "/opt/labrepo/scripts/setup_gitlab_container.sh"
-  "/opt/labrepo/scripts/setup_gitlab_ssh.sh"
-  "/opt/labrepo/scripts/validate_gitlab_lab.sh"
-)
+section_start "Configure Git platform mode"
 
-echo "Validating GitLab helper scripts..."
+INSTALL_GITLAB="${INSTALL_GITLAB:-false}"
+GIT_REMOTE_URL="${GIT_REMOTE_URL:-}"
 
-for script in "${GITLAB_SCRIPTS[@]}"; do
-  if [[ ! -f "$script" ]]; then
-    echo "Bootstrap failed: Required GitLab helper script missing: $script"
-    echo "BOOTSTRAP_STATE=failed_gitlab_script_missing" > "$STATUS_FILE"
-    echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
-    exit 1
-  fi
-done
+echo "GitLab local install requested: ${INSTALL_GITLAB}"
 
-chmod +x "${GITLAB_SCRIPTS[@]}"
+if [[ "${INSTALL_GITLAB}" == "true" ]]; then
 
-echo "Running GitLab container setup..."
-/opt/labrepo/scripts/setup_gitlab_container.sh
+    GITLAB_SCRIPTS=(
+      "/opt/labrepo/scripts/setup_gitlab_container.sh"
+      "/opt/labrepo/scripts/setup_gitlab_ssh.sh"
+      "/opt/labrepo/scripts/validate_gitlab_lab.sh"
+    )
 
-echo "Running GitLab SSH setup..."
-/opt/labrepo/scripts/setup_gitlab_ssh.sh
+    echo "Validating GitLab helper scripts..."
 
-ln -sf /opt/labrepo/scripts/validate_gitlab_lab.sh /usr/local/bin/validate-gitlab-lab
+    for script in "${GITLAB_SCRIPTS[@]}"; do
+      if [[ ! -f "$script" ]]; then
+        echo "Bootstrap failed: Required GitLab helper script missing: $script"
+        echo "BOOTSTRAP_STATE=failed_gitlab_script_missing" > "$STATUS_FILE"
+        echo "BOOTSTRAP_FAILED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+        exit 1
+      fi
+    done
 
-echo "GitLab portable DevOps lab setup complete."
+    chmod +x "${GITLAB_SCRIPTS[@]}"
+
+    echo "Running GitLab container setup..."
+    /opt/labrepo/scripts/setup_gitlab_container.sh
+
+    echo "Running GitLab SSH setup..."
+    /opt/labrepo/scripts/setup_gitlab_ssh.sh
+
+    ln -sf /opt/labrepo/scripts/validate_gitlab_lab.sh \
+      /usr/local/bin/validate-gitlab-lab
+
+    echo "Local GitLab portable DevOps lab setup complete."
+
+else
+
+    echo "Skipping local GitLab CE install."
+    echo "Using hosted Git workflow for faster bootstrap."
+
+    if [[ -n "${GIT_REMOTE_URL}" ]]; then
+
+        echo "Configuring Git remote origin..."
+
+        cd "${REPO_DIR}"
+
+        if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "${GIT_REMOTE_URL}"
+        else
+            git remote add origin "${GIT_REMOTE_URL}"
+        fi
+
+        echo "Configured Git remote:"
+        git remote -v
+
+    else
+        echo "No GIT_REMOTE_URL provided."
+        echo "Leaving existing Git remote unchanged."
+    fi
+
+fi
+
+section_end "Configure Git platform mode"
 
 ###############################################################
 # Create Helper Commands and User Environment Utilities
@@ -750,10 +833,12 @@ Validation
 ------------------------------
   docker version         Check Docker daemon connectivity
   docker ps              Verify Docker access (no sudo)
-  validate-gitlab-lab    Validate GitLab container, web access,
-                          SSH port, and lab SSH key
-  docker logs gitlab     View GitLab startup logs
   ansible --version      Verify Ansible environment
+
+Optional Local GitLab
+------------------------------
+  validate-gitlab-lab    Validate local GitLab container if installed
+  docker logs gitlab     View local GitLab startup logs if installed
 
 Bootstrap / Recovery
 ------------------------------

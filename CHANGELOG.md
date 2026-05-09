@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.4] - Configurable Git Platform Modes - 2026-05-09
+
+### Added
+
+- Added external bootstrap configuration loading from `/opt/bootstrap/bootstrap.env`
+- Added configurable bootstrap entrypoint for user-defined runtime variables
+- Added support for configurable hosted Git remotes using `GIT_REMOTE_URL`
+- Added optional local GitLab CE deployment toggle using `INSTALL_GITLAB`
+- Added bootstrap configuration banner and runtime config loading validation
+- Added reusable cloud-init bootstrap configuration pattern using separate `.env` and bootstrap script files
+- Added hosted Git workflow support for GitLab.com and GitHub-based lab deployments
+
+### Changed
+
+- Refactored GitLab bootstrap logic to support conditional local GitLab deployment
+- Changed local GitLab CE installation from mandatory to optional
+- Updated bootstrap architecture to separate user configuration from bootstrap logic
+- Improved portability for public repo consumers by removing hardcoded Git remote assumptions
+- Updated MOTD guidance to better distinguish optional local GitLab operations
+
 ## [0.7.3] - Bootstrap Service Optimization - 2026-05-08
 
 ### Fixed
