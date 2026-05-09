@@ -29,7 +29,8 @@ MARKER_FILE="/opt/bootstrap/.bootstrapped"
 REPO_DIR="/opt/labrepo"
 REPO_URL="https://github.com/EL5JAH/PROJECT-AUTOCOR.git"
 REPO_BRANCH="test-baseline_validate"
-BOOT_DELAY_SECONDS=180
+BOOT_DELAY_SECONDS=60
+BOOTSTRAP_START_EPOCH=$(date +%s)
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -78,7 +79,146 @@ for i in 1 2 3; do
   echo "apt-get update failed, retrying in 10 seconds..."
   sleep 10
 done
-apt-get install -y --fix-missing \
+
+###############################################################
+# Optimize Ubuntu service footprint
+#
+# Purpose:
+# - Reduce bootstrap-time background contention
+# - Prevent package/update helpers from competing with apt
+# - Disable unnecessary firmware/update telemetry services
+# - Keep automation-host lean for Docker, GitLab, Ansible, and pyATS
+#
+# Safe for:
+# - Ubuntu Server
+# - CML automation hosts
+# - Disposable lab environments
+# - Infrastructure automation workloads
+#
+# Important:
+# - Do NOT disable networking, SSH, time sync, logging,
+#   Docker, containerd, or cloud-init related services
+###############################################################
+
+echo
+echo "============================================================"
+echo "Optimizing Ubuntu service footprint"
+echo "============================================================"
+
+SERVICES_DISABLED=0
+
+disable_service() {
+    local UNIT="$1"
+
+    if systemctl list-unit-files --type=service --type=socket --type=timer --all \
+    --no-legend | awk '{print $1}' | grep -Fxq "${UNIT}"; then
+        systemctl disable --now "$UNIT" 2>/dev/null || true
+        systemctl mask "$UNIT" 2>/dev/null || true
+        echo "Disabled: ${UNIT}"
+        SERVICES_DISABLED=$((SERVICES_DISABLED + 1))
+    else
+        echo "Not present: ${UNIT}"
+    fi
+}
+
+###############################################################
+# Disable unattended apt timers
+###############################################################
+
+disable_service apt-daily.service
+disable_service apt-daily.timer
+disable_service apt-daily-upgrade.service
+disable_service apt-daily-upgrade.timer
+
+###############################################################
+# Disable unnecessary package/update helpers
+###############################################################
+
+disable_service packagekit.service
+disable_service packagekit.socket
+disable_service dbus-org.freedesktop.PackageKit.service
+disable_service update-notifier-download.service
+disable_service update-notifier-download.timer
+
+###############################################################
+# Disable firmware update services
+###############################################################
+
+disable_service fwupd.service
+disable_service fwupd-refresh.service
+disable_service fwupd-refresh.timer
+
+###############################################################
+# Disable Ubuntu Pro / apt news helpers
+###############################################################
+
+disable_service apt-news.service
+disable_service esm-cache.service
+
+###############################################################
+# Disable sysstat performance collection
+###############################################################
+
+disable_service sysstat.service
+disable_service sysstat-collect.timer
+disable_service sysstat-summary.timer
+
+echo
+echo "Service optimization complete"
+echo "Services disabled/masked: ${SERVICES_DISABLED}"
+
+###############################################################
+# Validate optimized service state
+###############################################################
+
+echo
+echo "============================================================"
+echo "Validating optimized service state"
+echo "============================================================"
+
+validate_disabled() {
+    local UNIT="$1"
+
+    if systemctl is-enabled "$UNIT" >/dev/null 2>&1; then
+        echo "WARNING: ${UNIT} still enabled"
+    else
+        echo "OK: ${UNIT} disabled"
+    fi
+}
+
+validate_disabled packagekit.service
+validate_disabled packagekit.socket
+validate_disabled dbus-org.freedesktop.PackageKit.service
+validate_disabled update-notifier-download.service
+validate_disabled update-notifier-download.timer
+validate_disabled fwupd.service
+validate_disabled fwupd-refresh.timer
+validate_disabled apt-news.service
+validate_disabled esm-cache.service
+validate_disabled sysstat.service
+
+echo
+echo "Checking for failed systemd units..."
+
+if systemctl --failed --no-legend | grep -q .; then
+    systemctl --failed
+else
+    echo "OK: no failed systemd units detected"
+fi
+
+echo
+echo "Ubuntu service footprint optimization complete"
+
+###############################################################
+# Install base packages
+###############################################################
+
+echo
+echo "============================================================"
+echo "Installing base packages"
+echo "============================================================"
+
+apt-get install -y --no-install-recommends --fix-missing \
     git \
     python3 \
     python3-pip \
@@ -328,13 +468,16 @@ Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
 for i in 1 2 3; do
   apt-get update -y && break
   echo "apt-get update failed after adding Docker repo, retrying in 10 seconds..."
   sleep 10
 done
 
-apt-get install -y --fix-missing \
+apt-get install -y --no-install-recommends --fix-missing \
   docker-ce \
   docker-ce-cli \
   containerd.io \
@@ -346,8 +489,7 @@ usermod -aG docker cisco
 echo "NOTE: Docker group membership for 'cisco' will apply on next login session."
 
 echo "Enabling and starting Docker service..."
-systemctl enable docker
-systemctl start docker
+systemctl enable --now docker
 
 echo "Docker installation complete."
 
@@ -638,7 +780,13 @@ EOF
 
 touch "${MARKER_FILE}"
 
+BOOTSTRAP_END_EPOCH=$(date +%s)
+BOOTSTRAP_DURATION=$((BOOTSTRAP_END_EPOCH - BOOTSTRAP_START_EPOCH))
+
 echo "BOOTSTRAP_STATE=completed" > "$STATUS_FILE"
 echo "BOOTSTRAP_COMPLETED_AT=$(date -Iseconds)" >> "$STATUS_FILE"
+echo "BOOTSTRAP_DURATION_SECONDS=${BOOTSTRAP_DURATION}" >> "$STATUS_FILE"
 
 echo "Bootstrap complete."
+echo
+echo "Bootstrap completed in ${BOOTSTRAP_DURATION} seconds."

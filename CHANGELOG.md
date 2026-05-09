@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3] - Bootstrap Service Optimization - 2026-05-08
+
+### Fixed
+
+- Added early cloud-init masking for Ubuntu package/update helper services before bootstrap execution.
+- Prevented PackageKit from restarting through socket and DBus activation during first boot.
+- Removed invalid cloud-init `runcmd` chmod reference to `${REPO_DIR}` before repository clone.
+
+### Changed
+
+- Retained bootstrap-level service optimization as final idempotent enforcement after early cloud-init prevention.
+- Improved first-boot package installation reliability by reducing apt/dpkg lock contention.
+
 ## [0.7.2] - Bootstrap Workflow Refactor and Repository Validation Hardening - 2026-05-08
 
 ### Changed
