@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.2] - pyATS Runtime Permission Hardening - 2026-05-10
+
+### Added
+
+- Added persistent `/opt/labrepo/pyats` workspace creation during bootstrap
+- Added pyATS artifact directory initialization under `/opt/labrepo/artifacts/pyats-runs`
+- Added ownership and permission enforcement for pyATS runtime directories
+- Added writable directory validation checks to the `run-pyats` wrapper
+- Added improved pyATS runtime logging for workspace, artifact, and repository mount visibility
+- Added automatic timestamped pyATS run directory creation
+
+### Changed
+
+- Updated `run-pyats` to use structured Docker bind mounts for:
+  - persistent pyATS workspace storage
+  - timestamped artifact collection
+  - repository workspace access
+- Hardened pyATS container initialization against permission-related failures caused by root-owned bind mount paths
+
 ## [0.8.1] - Bootstrap Section Timing Instrumentation - 2026-05-10
 
 ### Added

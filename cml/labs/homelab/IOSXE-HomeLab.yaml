@@ -1187,42 +1187,111 @@ nodes:
                 # Install pyATS Docker environment
                 #
                 # Purpose:
-                # - Pre-pull Cisco pyATS container image
-                # - Prepare pyATS runtime directories
-                # - Enable portable network validation workflows
-                # - Support CI/CD-ready pyATS execution
+                # - Pull the Cisco pyATS Docker image during bootstrap
+                # - Create a writable pyATS workspace for container runtime state
+                # - Create a writable artifact directory for pyATS run outputs
+                # - Install a run-pyats wrapper for repeatable validation runs
                 #
-                # Notes:
-                # - pyATS runs fully containerized
-                # - Host Python environment remains isolated
-                # - Reports and logs persist under artifacts/
+                # Important:
+                # - /opt/labrepo/pyats is mounted into the container as /pyats
+                # - /opt/labrepo/artifacts/pyats-runs/<timestamp> is mounted as /artifacts
+                # - Ownership must belong to cisco so normal lab runs do not require sudo
                 ###############################################################
 
-                section_start "Install pyATS Docker environment"
-
-                echo "Installing pyATS container environment..."
+                echo "Installing pyATS Docker environment..."
 
                 PYATS_IMAGE="ciscotestautomation/pyats:latest"
+                PYATS_WORKSPACE="/opt/labrepo/pyats"
+                PYATS_RUNS_DIR="/opt/labrepo/artifacts/pyats-runs"
 
-                mkdir -p /opt/labrepo/artifacts/pyats-runs
-                mkdir -p /opt/labrepo/pyats/testbeds
-                mkdir -p /opt/labrepo/pyats/jobs
-                mkdir -p /opt/labrepo/pyats/tests
+                mkdir -p "${PYATS_WORKSPACE}"
+                mkdir -p "${PYATS_RUNS_DIR}"
 
-                echo "Pulling pyATS Docker image..."
+                chown -R cisco:cisco "${PYATS_WORKSPACE}"
+                chown -R cisco:cisco "${PYATS_RUNS_DIR}"
+
+                chmod -R 755 "${PYATS_WORKSPACE}"
+                chmod -R 755 "${PYATS_RUNS_DIR}"
+
+                echo "Pulling pyATS Docker image: ${PYATS_IMAGE}"
                 docker pull "${PYATS_IMAGE}"
 
-                echo "Validating pyATS container image..."
+                cat > /usr/local/bin/run-pyats <<'EOF'
+                #!/usr/bin/env bash
+                set -euo pipefail
 
-                if ! docker image inspect "${PYATS_IMAGE}" >/dev/null 2>&1; then
-                    echo "Bootstrap failed: pyATS image missing"
-                    echo "BOOTSTRAP_STATE=failed_pyats_install" > "$STATUS_FILE"
+                ###############################################################
+                # run-pyats
+                #
+                # Purpose:
+                # - Run Cisco pyATS from a Docker container
+                # - Keep pyATS isolated from the host Python environment
+                # - Store run artifacts in timestamped directories
+                # - Use a persistent writable workspace mounted at /pyats
+                #
+                # Usage:
+                #   run-pyats
+                #   run-pyats pyats version check
+                #   run-pyats bash
+                ###############################################################
+
+                PYATS_IMAGE="ciscotestautomation/pyats:latest"
+                REPO_DIR="/opt/labrepo"
+                PYATS_WORKSPACE="${REPO_DIR}/pyats"
+                PYATS_RUNS_DIR="${REPO_DIR}/artifacts/pyats-runs"
+                RUN_ID="$(date +%Y%m%d-%H%M%S)"
+                RUN_DIR="${PYATS_RUNS_DIR}/${RUN_ID}"
+
+                mkdir -p "${PYATS_WORKSPACE}"
+                mkdir -p "${RUN_DIR}"
+
+                if [[ ! -w "${PYATS_WORKSPACE}" ]]; then
+                    echo "ERROR: pyATS workspace is not writable: ${PYATS_WORKSPACE}"
+                    echo "Fix with:"
+                    echo "  sudo chown -R cisco:cisco ${PYATS_WORKSPACE}"
                     exit 1
                 fi
 
-                echo "pyATS container environment ready"
+                if [[ ! -w "${PYATS_RUNS_DIR}" ]]; then
+                    echo "ERROR: pyATS artifact directory is not writable: ${PYATS_RUNS_DIR}"
+                    echo "Fix with:"
+                    echo "  sudo chown -R cisco:cisco ${PYATS_RUNS_DIR}"
+                    exit 1
+                fi
 
-                section_end
+                echo "Starting pyATS container..."
+                echo "Image:      ${PYATS_IMAGE}"
+                echo "Workspace:  ${PYATS_WORKSPACE} -> /pyats"
+                echo "Artifacts:  ${RUN_DIR} -> /artifacts"
+                echo
+
+                if [[ $# -gt 0 ]]; then
+                    docker run --rm -it \
+                        -v "${PYATS_WORKSPACE}:/pyats" \
+                        -v "${RUN_DIR}:/artifacts" \
+                        -v "${REPO_DIR}:/workspace" \
+                        -w /workspace \
+                        "${PYATS_IMAGE}" \
+                        "$@"
+                else
+                    docker run --rm -it \
+                        -v "${PYATS_WORKSPACE}:/pyats" \
+                        -v "${RUN_DIR}:/artifacts" \
+                        -v "${REPO_DIR}:/workspace" \
+                        -w /workspace \
+                        "${PYATS_IMAGE}" \
+                        pyats version check
+                fi
+
+                echo
+                echo "pyATS run complete."
+                echo "Artifacts saved to: ${RUN_DIR}"
+                EOF
+
+                chmod 755 /usr/local/bin/run-pyats
+                chown root:root /usr/local/bin/run-pyats
+
+                echo "pyATS Docker environment installed successfully."
 
                 ###############################################################
                 # Configure Git platform mode
