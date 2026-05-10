@@ -35,15 +35,22 @@ BOOTSTRAP_START_EPOCH=$(date +%s)
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 section_start() {
+  SECTION_NAME="$1"
+  SECTION_START_EPOCH="$(date +%s)"
   echo
   echo "============================================================"
-  echo "$1"
+  echo "START: ${SECTION_NAME} - $(date -Iseconds)"
   echo "============================================================"
 }
 
 section_end() {
+  local end_epoch
+  end_epoch="$(date +%s)"
   echo
-  echo "Completed: $1"
+  echo "============================================================"
+  echo "END: ${SECTION_NAME} - $(date -Iseconds)"
+  echo "Duration: $((end_epoch - SECTION_START_EPOCH)) seconds"
+  echo "============================================================"
 }
 
 echo "BOOTSTRAP_STATE=starting" > "$STATUS_FILE"
@@ -78,6 +85,8 @@ export DEBIAN_FRONTEND=noninteractive
 # - Values loaded here override bootstrap defaults
 # - Missing config file is non-fatal
 ###############################################################
+
+section_start "Load bootstrap configuration"
 
 BOOTSTRAP_CONFIG="/opt/bootstrap/bootstrap.env"
 
@@ -125,6 +134,8 @@ for i in 1 2 3; do
   sleep 10
 done
 
+section_end
+
 ###############################################################
 # Optimize Ubuntu service footprint
 #
@@ -144,6 +155,8 @@ done
 # - Do NOT disable networking, SSH, time sync, logging,
 #   Docker, containerd, or cloud-init related services
 ###############################################################
+
+section_start "Optimize Ubuntu service footprint"
 
 echo
 echo "============================================================"
@@ -274,6 +287,8 @@ apt-get install -y --no-install-recommends --fix-missing \
     iputils-ping \
     traceroute
 
+  section_end 
+
 ###############################################################
 # Configure Ansible vault password helper
 #
@@ -301,6 +316,8 @@ apt-get install -y --no-install-recommends --fix-missing \
 # - This block does NOT print the password
 # - The password must be supplied externally at runtime
 ###############################################################
+
+section_start "Configure Ansible vault password helper"
 
 echo "Configuring Ansible vault password helper..."
 
@@ -370,6 +387,8 @@ fi
 
 echo "Ansible vault password helper created successfully."
 
+section_end
+
 ###############################################################
 # Clone automation repository
 #
@@ -378,6 +397,8 @@ echo "Ansible vault password helper created successfully."
 # - Ensure bootstrap has access to scripts, requirements, and lab files
 # - Clone as the cisco user so repo ownership is correct
 ###############################################################
+
+section_start "Clone automation repository"
 
 mkdir -p /opt/bootstrap
 mkdir -p /opt
@@ -407,6 +428,8 @@ fi
 # - Check out the target bootstrap branch
 # - Ensure required bootstrap files are present
 ###############################################################
+
+section_start "Validate automation repository"
 
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
     echo "Bootstrap failed: repository missing or invalid: ${REPO_DIR}"
@@ -441,6 +464,8 @@ if [[ ! -f "${REPO_DIR}/requirements.txt" ]]; then
     exit 1
 fi
 
+section_end
+
 ###############################################################
 # Set repository script permissions
 #
@@ -466,6 +491,8 @@ find "${REPO_DIR}/scripts" -type f -name "*.sh" -exec chmod 755 {} \;
 # - Keep lab automation dependencies separate from system Python
 ###############################################################
 
+section_start "Create Python virtual environment"
+
 echo "Creating Python virtual environment..."
 sudo -u cisco python3 -m venv .venv
 
@@ -475,6 +502,8 @@ cd '${REPO_DIR}' &&
 source .venv/bin/activate &&
 pip install --upgrade pip &&
 pip install -r requirements.txt"
+
+section_end
 
 ###############################################################
 # Install Docker Engine
@@ -494,6 +523,8 @@ pip install -r requirements.txt"
 # - The docker group membership applies after the cisco user starts
 #   a new login session
 ###############################################################
+
+section_start "Install Docker Engine"
 
 echo "Installing Docker Engine..."
 
@@ -538,6 +569,8 @@ systemctl enable --now docker
 
 echo "Docker installation complete."
 
+section_end
+
 ###############################################################
 # Validate Docker installation
 #
@@ -549,6 +582,8 @@ echo "Docker installation complete."
 # - We do NOT run `docker` as cisco here because group membership
 #   may not apply until the next login session.
 ###############################################################
+
+section_start "Validate Docker installation"
 
 echo "Validating Docker installation..."
 
@@ -576,6 +611,8 @@ fi
 echo "Docker validation passed."
 echo "NOTE: cisco may need a new login session before running docker without sudo."
 
+section_end
+
 ###############################################################
 # Install pyATS Docker environment
 #
@@ -590,6 +627,8 @@ echo "NOTE: cisco may need a new login session before running docker without sud
 # - Host Python environment remains isolated
 # - Reports and logs persist under artifacts/
 ###############################################################
+
+section_start "Install pyATS Docker environment"
 
 echo "Installing pyATS container environment..."
 
@@ -612,6 +651,8 @@ if ! docker image inspect "${PYATS_IMAGE}" >/dev/null 2>&1; then
 fi
 
 echo "pyATS container environment ready"
+
+section_end
 
 ###############################################################
 # Configure Git platform mode
@@ -692,7 +733,7 @@ else
 
 fi
 
-section_end "Configure Git platform mode"
+section_end 
 
 ###############################################################
 # Create Helper Commands and User Environment Utilities

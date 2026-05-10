@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - Bootstrap Section Timing Instrumentation - 2026-05-10
+
+### Added
+
+- Added `section_start` timestamp logging to major bootstrap workflow sections
+- Added `section_end` timestamp logging to major bootstrap workflow sections
+- Added standardized runtime instrumentation for bootstrap phase duration tracking
+- Improved bootstrap observability for provisioning performance analysis and troubleshooting
+- Prepared bootstrap workflow for future optimization benchmarking and timing comparisons
+
 ## [0.8.0] - pyATS Container Runtime & Repository Platform Structure - 2026-05-09
 
 ### Added
