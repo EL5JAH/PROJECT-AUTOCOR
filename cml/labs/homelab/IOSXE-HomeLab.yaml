@@ -1147,6 +1147,43 @@ nodes:
                 echo "NOTE: cisco may need a new login session before running docker without sudo."
 
                 ###############################################################
+                # Install pyATS Docker environment
+                #
+                # Purpose:
+                # - Pre-pull Cisco pyATS container image
+                # - Prepare pyATS runtime directories
+                # - Enable portable network validation workflows
+                # - Support CI/CD-ready pyATS execution
+                #
+                # Notes:
+                # - pyATS runs fully containerized
+                # - Host Python environment remains isolated
+                # - Reports and logs persist under artifacts/
+                ###############################################################
+
+                echo "Installing pyATS container environment..."
+
+                PYATS_IMAGE="ciscotestautomation/pyats:latest"
+
+                mkdir -p /opt/labrepo/artifacts/pyats-runs
+                mkdir -p /opt/labrepo/pyats/testbeds
+                mkdir -p /opt/labrepo/pyats/jobs
+                mkdir -p /opt/labrepo/pyats/tests
+
+                echo "Pulling pyATS Docker image..."
+                docker pull "${PYATS_IMAGE}"
+
+                echo "Validating pyATS container image..."
+
+                if ! docker image inspect "${PYATS_IMAGE}" >/dev/null 2>&1; then
+                    echo "Bootstrap failed: pyATS image missing"
+                    echo "BOOTSTRAP_STATE=failed_pyats_install" > "$STATUS_FILE"
+                    exit 1
+                fi
+
+                echo "pyATS container environment ready"
+
+                ###############################################################
                 # Configure Git platform mode
                 #
                 # Purpose:
@@ -1368,6 +1405,18 @@ nodes:
 
                   echo "Exited lab environment"
                 }
+
+                ###############################################################
+                # Lab environment helper aliases
+                ###############################################################
+
+                alias lab='cd /opt/labrepo'
+
+                alias run-ansible='/opt/labrepo/scripts/run_ansible.sh'
+
+                alias run-pyats='/opt/labrepo/scripts/run_pyats.sh'
+
+                alias pyats-shell='docker run --rm -it -v /opt/labrepo:/workspace -w /workspace ciscotestautomation/pyats:latest bash'
                 EOF
 
                 chmod 644 /etc/profile.d/labenv.sh
@@ -1382,17 +1431,20 @@ nodes:
                 ###############################################################
 
                 cat >/etc/motd <<'EOF'
-                ============================================================
-                      PROJECT AUTOCOR - Automation Host
-                ============================================================
+                ###############################################################
+                # PROJECT AUTOCOR - Portable Automation Lab
+                #
+                # Enterprise Network Automation & Validation Platform
+                ###############################################################
 
                 Lab Environment
-                ------------------------------
+                ---------------------------------------------------------------
                   enter-lab              Activate lab environment
                   exit-lab               Exit lab environment
+                  lab                    Change to repository root
 
                 Platform Operations
-                ------------------------------
+                ---------------------------------------------------------------
                   lab help               Show available lab commands
                   lab check              Validate environment health
                   lab run <playbook>     Run Ansible playbook
@@ -1400,28 +1452,54 @@ nodes:
                   lab last               Show latest run directory
 
                 Validation
-                ------------------------------
-                  docker version         Check Docker daemon connectivity
-                  docker ps              Verify Docker access (no sudo)
+                ---------------------------------------------------------------
+                  bootstrap-status       View bootstrap logs and status
+                  docker version         Verify Docker daemon connectivity
+                  docker ps              Verify Docker access without sudo
                   ansible --version      Verify Ansible environment
+                  run-ansible            Execute Ansible automation wrapper
+                  run-pyats              Execute pyATS validation workflow
+
+                pyATS Operations
+                ---------------------------------------------------------------
+                  pyats-shell            Open interactive pyATS container
+                  docker images          Verify pyATS container image
 
                 Optional Local GitLab
-                ------------------------------
-                  validate-gitlab-lab    Validate local GitLab container if installed
-                  docker logs gitlab     View local GitLab startup logs if installed
+                ---------------------------------------------------------------
+                  validate-gitlab-lab    Validate local GitLab deployment
+                  docker logs gitlab     View GitLab container startup logs
 
-                Bootstrap / Recovery
-                ------------------------------
-                  bootstrap-status       View bootstrap logs and status
+                Artifacts & Logs
+                ---------------------------------------------------------------
+                  Ansible Runs:
+                    /opt/labrepo/artifacts/ansible-runs/
+
+                  pyATS Runs:
+                    /opt/labrepo/artifacts/pyats-runs/
+
+                  Bootstrap Log:
+                    /var/log/automation-bootstrap.log
+
+                  Bootstrap Status:
+                    /var/log/automation-bootstrap.status
+
+                Platform Components
+                ---------------------------------------------------------------
+                  - Docker
+                  - GitLab (optional local deployment)
+                  - Ansible
+                  - pyATS
+                  - Cisco CML Integration
 
                 Environment Notes
-                ------------------------------
+                ---------------------------------------------------------------
                   - Use enter-lab before running automation commands
                   - Docker runs without sudo for cisco user
-                  - Artifacts stored under:
-                      /opt/labrepo/artifacts/
+                  - pyATS executes inside containerized runtime
+                  - Validation artifacts persist under artifacts/
 
-                ============================================================
+                ###############################################################
                 EOF
 
                 ###############################################################

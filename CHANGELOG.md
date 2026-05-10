@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - pyATS Container Runtime & Repository Platform Structure - 2026-05-09
+
+### Added
+
+- Added containerized pyATS runtime support to automation-host bootstrap
+- Added automatic Cisco pyATS Docker image pull during provisioning
+- Added pyATS runtime directories for testbeds, jobs, tests, and reports
+- Added dedicated pyATS platform structure:
+  - `pyats/docker/`
+  - `pyats/jobs/`
+  - `pyats/testbeds/`
+  - `pyats/tests/`
+- Added pyATS Docker build and compose definitions
+- Added pyATS baseline validation job
+- Added initial pyATS validation test suite:
+  - `test_connectivity.py`
+  - `test_interfaces.py`
+  - `test_ospf.py`
+  - `test_vlan.py`
+- Added pyATS testbed definitions for:
+  - `sandbox.yml`
+  - `homelab.yml`
+- Added timestamped pyATS artifact directory structure under:
+  - `artifacts/pyats-runs/`
+- Added `run_pyats.sh` wrapper for repeatable pyATS validation execution
+- Added `run-pyats` command for launching pyATS validation workflows
+- Added `pyats-shell` alias for interactive pyATS container access
+- Added pyATS operations section to the automation-host MOTD
+- Added platform components section documenting:
+  - Docker
+  - GitLab
+  - Ansible
+  - pyATS
+  - Cisco CML integration
+
+### Changed
+
+- Updated MOTD layout for a more uniform and professional structure
+- Improved bootstrap script permission handling by automatically applying executable permissions to all `.sh` files under:
+  - `/opt/labrepo/scripts`
+- Kept pyATS isolated from the host Python virtual environment by using Docker as the runtime boundary
+- Added dedicated `gitlab/local/scripts/` structure for local GitLab deployment tooling
+- Reorganized GitLab helper scripts into the GitLab platform directory
+- Moved:
+  - `setup_gitlab_container.sh`
+  - `setup_gitlab_ssh.sh`
+  - `validate_gitlab_lab.sh`
+  - `docker-compose.yaml`
+
+### Improved
+
+- Improved portability of validation workflows across local lab, CML, and future CI/CD execution
+- Improved operator experience with simplified pyATS helper commands
+- Improved artifact organization for pyATS validation runs
+- Improved repository scalability for future validation expansion
+- Improved repository organization by separating platform-specific tooling from generic utility scripts
+- Prepared repository layout for:
+  - future GitLab CI/CD runners
+  - containerized validation pipelines
+  - pyATS scaling
+  - automated regression testing
+  - multi-environment validation workflows
+
 ## [0.7.4] - Configurable Git Platform Modes - 2026-05-09
 
 ### Added
