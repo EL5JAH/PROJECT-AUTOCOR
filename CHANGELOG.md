@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.3] - Documentation Overhaul and Bootstrap Instrumentation - 2026-06-21
+
+### Documentation
+
+- Rewrote README to reflect current platform architecture
+- Added docs/QUICKSTART.md
+- Added docs/ARCHITECTURE.md
+- Documented automation host, Ansible, pyATS, artifacts, and topology
+
+### Bootstrap
+
+- Added section_start/section_end timing to pyATS Docker installation
+- Improved bootstrap execution visibility
+- Improved section-level performance tracking
+
 ## [0.8.2] - pyATS Runtime Permission Hardening - 2026-05-10
 
 ### Added

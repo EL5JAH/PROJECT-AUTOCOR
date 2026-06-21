@@ -628,6 +628,8 @@ section_end
 # - Ownership must belong to cisco so normal lab runs do not require sudo
 ###############################################################
 
+section_start "Install pyATS Docker environment"
+
 echo "Installing pyATS Docker environment..."
 
 PYATS_IMAGE="ciscotestautomation/pyats:latest"
@@ -722,6 +724,7 @@ chmod 755 /usr/local/bin/run-pyats
 chown root:root /usr/local/bin/run-pyats
 
 echo "pyATS Docker environment installed successfully."
+section_end
 
 ###############################################################
 # Configure Git platform mode
